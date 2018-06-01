@@ -1,5 +1,6 @@
 #include "glapp.h"
 #include "glwindow.h"
+#include "object.h"
 
 int main()
 {
