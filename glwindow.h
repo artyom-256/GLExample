@@ -166,10 +166,13 @@ public:
         float camZ = cos(glfwGetTime()) * 10;
 
         glm::mat4 cameraMatrix4 = glm::lookAt(
-            glm::vec3(objectX, objectY, objectZ), // Позиция камеры в мировом пространстве
+            glm::vec3(0, 0, 0), // Позиция камеры в мировом пространстве
             glm::vec3(0, 0, 1),   // Указывает куда вы смотрите в мировом пространстве
             glm::vec3(0, 1, 0)        // Вектор, указывающий направление вверх. Обычно (0, 1, 0)
         );
+
+        cameraMatrix4 = m_cameraRotation * cameraMatrix4;
+        cameraMatrix4 = glm::translate(cameraMatrix4, -m_cameraPosition);
 
         glm::mat4 modelMatrix4 = glm::rotate(glm::mat4(1.0f), float(glfwGetTime()), glm::vec3(0, 1, 0));
 
@@ -237,6 +240,24 @@ public:
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
         glfwSwapBuffers(m_window);
+    }
+    void processInput()
+    {
+        if (glfwGetKey(m_window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+            m_cameraRotation = glm::rotate(m_cameraRotation, -0.01f, glm::vec3(0, 1, 0));
+        } else if (glfwGetKey(m_window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+            m_cameraRotation = glm::rotate(m_cameraRotation, 0.01f, glm::vec3(0, 1, 0));
+        } else if (glfwGetKey(m_window, GLFW_KEY_UP) == GLFW_PRESS) {
+            m_cameraRotation = glm::rotate(m_cameraRotation, -0.01f, glm::vec3(1, 0, 0));
+        } else if (glfwGetKey(m_window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+            m_cameraRotation = glm::rotate(m_cameraRotation, 0.01f, glm::vec3(1, 0, 0));
+        } else if (glfwGetKey(m_window, GLFW_KEY_W) == GLFW_PRESS) {
+            m_cameraPosition += glm::vec3(m_cameraRotation * glm::vec4(0.0, 0.0, 0.1, 1.0));
+        } else if (glfwGetKey(m_window, GLFW_KEY_S) == GLFW_PRESS) {
+            m_cameraPosition += glm::vec3(m_cameraRotation * glm::vec4(0.0, 0.0, -0.1, 1.0));
+        } else if (glfwGetKey(m_window, GLFW_KEY_A) == GLFW_PRESS) {
+        } else if (glfwGetKey(m_window, GLFW_KEY_D) == GLFW_PRESS) {
+        }
     }
     void clear() {
         glDeleteVertexArrays(1, &m_VAO);
@@ -347,4 +368,8 @@ private:
     GLfloat objectY = 0;
     GLfloat objectZ = -10.0;
     GLfloat scale = 1;
+    GLfloat rotationY = 0.0;
+
+    glm::vec3 m_cameraPosition{0, 0, -10.0};
+    glm::mat4 m_cameraRotation{1};
 };
