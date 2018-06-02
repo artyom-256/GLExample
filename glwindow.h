@@ -105,7 +105,6 @@ public:
 
         float *vertices = obj.getVertexes();
 
-        std::cout << "NUM VERT 2 " << obj.numVertexes();
         glBufferData(GL_ARRAY_BUFFER, obj.numVertexes() * sizeof(float), vertices, GL_STATIC_DRAW);
 
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
@@ -121,8 +120,6 @@ public:
 
         BitmapImage img("D://10.bmp");
 
-        std::cout << "IMG " << img.getDataSize();
-
         // Создадим одну текстуру OpenGL
         GLuint textureID;
         glGenTextures(1, &textureID);
@@ -133,8 +130,17 @@ public:
         // Передадим изображение OpenGL
         glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img.getWidth(), img.getHeight(), 0, GL_BGR, GL_UNSIGNED_BYTE, img.getData());
 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        int g_nMaxAnisotropy;
+        glGetIntegerv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,&g_nMaxAnisotropy);
+
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_ANISOTROPY_EXT,
+                            g_nMaxAnisotropy-0.1);
+        // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        // Когда изображение уменьшается, то мы используем линейной смешивание 2х мипмапов, к которым также применяется линейная фильтрация
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        // И генерируем мипмап
+        glGenerateMipmap(GL_TEXTURE_2D);;
 
 
 
