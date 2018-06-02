@@ -121,7 +121,6 @@ public:
         BitmapImage img("D://10.bmp");
 
         // Создадим одну текстуру OpenGL
-        GLuint textureID;
         glGenTextures(1, &textureID);
 
         // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
@@ -147,6 +146,10 @@ public:
         glGenBuffers(1, &uvbuffer);
         glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
         glBufferData(GL_ARRAY_BUFFER, obj.numUVs() * sizeof(float), obj.getUVs(), GL_STATIC_DRAW);
+
+        glGenBuffers(1, &normbuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, normbuffer);
+        glBufferData(GL_ARRAY_BUFFER, obj.numNormales() * sizeof(float), obj.getNormales(), GL_STATIC_DRAW);
     }
     void render() {
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -177,6 +180,11 @@ public:
             100.0f             // Дальняя плоскость отсечения.
         );
 
+        glm::vec4 lightPosition4{10.0, 10.0, -10.0, 1.0};
+
+        //glm::mat4 lightModelMatrix = glm::rotate(glm::mat4(1.0f), float(-glfwGetTime() * 3), glm::vec3(0, 1, 0));
+        //lightPosition4 = lightModelMatrix * lightPosition4;
+
         GLint modelMatrix = glGetUniformLocation(m_shaderProgram, "modelMatrix");
         glUniformMatrix4fv(modelMatrix, 1, GL_FALSE, glm::value_ptr(modelMatrix4));
 
@@ -185,6 +193,12 @@ public:
 
         GLint projectionMatrix = glGetUniformLocation(m_shaderProgram, "projectionMatrix");
         glUniformMatrix4fv(projectionMatrix, 1, GL_FALSE, glm::value_ptr(projectionMatrix4));
+
+        GLint lightPosition = glGetUniformLocation(m_shaderProgram, "lightPosition");
+        glUniform4fv(lightPosition, 1, glm::value_ptr(lightPosition4));
+
+        GLint cameraPosition = glGetUniformLocation(m_shaderProgram, "cameraPosition");
+        glUniform4fv(cameraPosition, 1, glm::value_ptr(glm::vec4(objectX, objectY, objectZ, 1.0)));
 
 //        GLint myTextureSampler = glGetUniformLocation(m_shaderProgram, "myTextureSampler");
 //        glUniformMatrix4fv(myTextureSampler, 1, GL_FALSE, glm::value_ptr(myTextureSampler));
@@ -203,6 +217,18 @@ public:
                     (void*)0                          // array buffer offset
                     );
 
+        glEnableVertexAttribArray(2);
+        glBindBuffer(GL_ARRAY_BUFFER, normbuffer);
+        glVertexAttribPointer(
+                    2,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+                    3,                                // size : U+V => 2
+                    GL_FLOAT,                         // type
+                    GL_FALSE,                         // normalized?
+                    0,                                // stride
+                    (void*)0                          // array buffer offset
+                    );
+
+        glUniform1i(textureID, 0);
 
 
         glDrawArrays(GL_TRIANGLES, 0, obj.numVertexes());
@@ -229,6 +255,8 @@ private:
     unsigned int m_VBO;
 
     GLuint uvbuffer;
+    GLuint normbuffer;
+    GLuint textureID;
 
     Object obj;
 
@@ -237,12 +265,20 @@ private:
         #version 330 core
         layout (location = 0) in vec3 aPos;
         layout (location = 1) in vec2 vertexUV;
+        layout (location = 2) in vec3 vertexNorm;
         uniform mat4 modelMatrix;
         uniform mat4 cameraMatrix;
         uniform mat4 projectionMatrix;
 
         out vec4 colorOutput;
         out vec2 UV;
+        out vec4 lightPos;
+        out vec4 norm;
+        out vec4 lightDirection;
+        out vec4 cameraDirection;
+
+        uniform vec4 lightPosition;
+        uniform vec4 cameraPosition;
 
 
         void main()
@@ -259,6 +295,9 @@ private:
             }
 
             UV = vertexUV;
+            norm = modelMatrix * vec4(vertexNorm, 1.0);
+            lightDirection = normalize(lightPosition - modelMatrix * vec4(aPos, 1.0));
+            cameraDirection = normalize(cameraPosition - modelMatrix * vec4(aPos, 1.0));
         }
     )";
     const char *fragmentShaderSource = R"(
@@ -266,14 +305,41 @@ private:
         out vec3 FragColor;
         in vec4 colorOutput;
 
+        in vec4 lightDirection;
+        in vec4 cameraDirection;
         in vec2 UV;
+        in vec4 norm;
+
 
         uniform sampler2D myTextureSampler;
 
         void main()
         {
-           //FragColor = colorOutput;
-           FragColor = texture( myTextureSampler, UV ).rgb;
+           //FragColor = vec3(dot(norm.xyz, lightDirection.xyz), 0.0, 0.0);
+           vec3 textureColor = texture( myTextureSampler, UV ).rgb;
+
+           // Ambient
+           vec3 ambientColor = textureColor * 0.2;
+
+           // Diffuse
+           vec3 diffuseColor = textureColor * dot(norm.xyz, lightDirection.xyz);
+           if(diffuseColor.x < 0 || diffuseColor.y < 0 || diffuseColor.z < 0) {
+                diffuseColor = vec3(0,0,0);
+           }
+
+           // Specular
+           vec3 R = 2*dot(norm.xyz, lightDirection.xyz) * norm.xyz - lightDirection.xyz;
+           vec3 specularColor = textureColor * (dot(R, cameraDirection.xyz));
+
+           if(specularColor.x < 0 || specularColor.y < 0 || specularColor.z < 0) {
+                specularColor = vec3(0,0,0);
+           }
+
+
+           FragColor = ambientColor +
+                       diffuseColor +
+                       specularColor +
+                       0;
         }
     )";
 

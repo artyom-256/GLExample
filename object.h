@@ -56,6 +56,21 @@ public:
                 m_uvs.push_back( { u, v } );
             }
 
+            if (line[0] == 'v' && line[1] == 'n' && line[2] == ' ') {
+                // Normales.
+
+                std::vector< std::string > tokens = splitString(line);
+                if (tokens.size() != 4) {
+                    continue;
+                }
+
+                float x = std::stof(tokens[1].c_str());
+                float y = std::stof(tokens[2].c_str());
+                float z = std::stof(tokens[3].c_str());
+
+                m_normales.push_back( { x, y, z } );
+            }
+
             if (line[0] == 'f' && line[1] == ' ') {
                 std::vector< std::string > tokens = splitString(line);
 
@@ -72,6 +87,9 @@ public:
 
                     int index_uv = std::stoi(entries[1]) - 1;
                     m_indices_uv.push_back(index_uv);
+
+                    int index_norm = std::stoi(entries[2]) - 1;
+                    m_indices_norm.push_back(index_norm);
                 }
             }
         }
@@ -99,6 +117,22 @@ public:
         }
 
         m_uv_f_size = m_indices_uv.size() * 2;
+
+        i = 0;
+
+        std::cout << "&&& " << m_normales.size();
+
+        m_normales_f.reset(new float[m_indices_norm.size() * 3]);
+
+        for (auto index : m_indices_norm) {
+            std::cout << "### " << index << " " << m_normales[index].x << " " << m_normales[index].y << " " << m_normales[index].z;
+            m_normales_f[i++] = m_normales[index].x;
+            m_normales_f[i++] = m_normales[index].y;
+            m_normales_f[i++] = m_normales[index].z;
+        }
+
+        m_normales_size = m_indices_norm.size() * 3;
+
     }
 
     float* getVertexes() {
@@ -112,6 +146,12 @@ public:
     }
     int numUVs() {
         return m_uv_f_size;
+    }
+    float* getNormales() {
+        return m_normales_f.get();
+    }
+    int numNormales() {
+        return m_normales_size;
     }
 private:
     struct vertex {
@@ -134,13 +174,17 @@ private:
 
     int m_vertexes_f_size;
     int m_uv_f_size;
+    int m_normales_size;
 
     std::vector< vertex > m_vertexes;
     std::vector< uv > m_uvs;
     std::vector< int > m_indices;
     std::vector< int > m_indices_uv;
+    std::vector< int > m_indices_norm;
+    std::vector< vertex > m_normales;
 
     std::unique_ptr< float[] > m_vertexes_f;
     std::unique_ptr< float[] > m_uvs_f;
-    std::unique_ptr< float > m_indices_f;
+    std::unique_ptr< float[] > m_indices_f;
+    std::unique_ptr< float[] > m_normales_f;
 };
