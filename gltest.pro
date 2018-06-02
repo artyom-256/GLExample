@@ -16,9 +16,11 @@ LIBS+=D:\Programming\gl\glm-0.9.9.0\build\glm\libglm_static.a
 SOURCES += main.cpp \
     glwindow.cpp \
     glapp.cpp \
-    object.cpp
+    object.cpp \
+    bitmapimage.cpp
 
 HEADERS += \
     glwindow.h \
     glapp.h \
-    object.h
+    object.h \
+    bitmapimage.h

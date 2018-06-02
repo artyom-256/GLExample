@@ -12,6 +12,7 @@
 #include <iostream>
 
 #include "object.h"
+#include "bitmapimage.h"
 
 class GLWindow : public std::enable_shared_from_this< GLWindow >
 {
@@ -79,6 +80,11 @@ public:
         // set up vertex data (and buffer(s)) and configure vertex attributes
         // ------------------------------------------------------------------
 
+        // Enable depth test
+            glEnable(GL_DEPTH_TEST);
+            // Accept fragment if it closer to the camera than the former one
+            glDepthFunc(GL_LESS);
+
 
         glGenVertexArrays(1, &m_VAO);
         glGenBuffers(1, &m_VBO);
@@ -111,10 +117,34 @@ public:
         // You can unbind the VAO afterwards so other VAO calls won't accidentally modify this VAO, but this rarely happens. Modifying other
         // VAOs requires a call to glBindVertexArray anyways so we generally don't unbind VAOs (nor VBOs) when it's not directly necessary.
         glBindVertexArray(0);
+
+
+        BitmapImage img("D://10.bmp");
+
+        std::cout << "IMG " << img.getDataSize();
+
+        // Создадим одну текстуру OpenGL
+        GLuint textureID;
+        glGenTextures(1, &textureID);
+
+        // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
+        glBindTexture(GL_TEXTURE_2D, textureID);
+
+        // Передадим изображение OpenGL
+        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img.getWidth(), img.getHeight(), 0, GL_BGR, GL_UNSIGNED_BYTE, img.getData());
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+
+
+        glGenBuffers(1, &uvbuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+        glBufferData(GL_ARRAY_BUFFER, obj.numUVs() * sizeof(float), obj.getUVs(), GL_STATIC_DRAW);
     }
     void render() {
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // draw our first triangle
         glUseProgram(m_shaderProgram);
@@ -150,8 +180,25 @@ public:
         GLint projectionMatrix = glGetUniformLocation(m_shaderProgram, "projectionMatrix");
         glUniformMatrix4fv(projectionMatrix, 1, GL_FALSE, glm::value_ptr(projectionMatrix4));
 
+//        GLint myTextureSampler = glGetUniformLocation(m_shaderProgram, "myTextureSampler");
+//        glUniformMatrix4fv(myTextureSampler, 1, GL_FALSE, glm::value_ptr(myTextureSampler));
+
         glBindVertexArray(m_VAO); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
         std::cout << "NUM VERT " << obj.numVertexes();
+
+        glEnableVertexAttribArray(1);
+        glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+        glVertexAttribPointer(
+                    1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+                    2,                                // size : U+V => 2
+                    GL_FLOAT,                         // type
+                    GL_FALSE,                         // normalized?
+                    0,                                // stride
+                    (void*)0                          // array buffer offset
+                    );
+
+
+
         glDrawArrays(GL_TRIANGLES, 0, obj.numVertexes());
         // glBindVertexArray(0); // no need to unbind it every time
 
@@ -175,17 +222,21 @@ private:
     unsigned int m_VAO;
     unsigned int m_VBO;
 
+    GLuint uvbuffer;
+
     Object obj;
 
 
     const char *vertexShaderSource = R"(
         #version 330 core
         layout (location = 0) in vec3 aPos;
+        layout (location = 1) in vec2 vertexUV;
         uniform mat4 modelMatrix;
         uniform mat4 cameraMatrix;
         uniform mat4 projectionMatrix;
 
         out vec4 colorOutput;
+        out vec2 UV;
 
 
         void main()
@@ -200,15 +251,23 @@ private:
             } else {
                 colorOutput = vec4(0, 1, 0, 1);
             }
+
+            UV = vertexUV;
         }
     )";
     const char *fragmentShaderSource = R"(
         #version 330 core
-        out vec4 FragColor;
+        out vec3 FragColor;
         in vec4 colorOutput;
+
+        in vec2 UV;
+
+        uniform sampler2D myTextureSampler;
+
         void main()
         {
-           FragColor = colorOutput;
+           //FragColor = colorOutput;
+           FragColor = texture( myTextureSampler, UV ).rgb;
         }
     )";
 

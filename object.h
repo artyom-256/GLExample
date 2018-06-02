@@ -21,7 +21,7 @@ public:
         while (ifs) {
             getline(ifs, line);
 
-            if (line.length() < 2) {
+            if (line.length() < 3) {
                 continue;
             }
 
@@ -42,6 +42,20 @@ public:
                 m_vertexes.push_back( { x, y, z } );
             }
 
+            if (line[0] == 'v' && line[1] == 't' && line[2] == ' ') {
+                // UV.
+
+                std::vector< std::string > tokens = splitString(line);
+                if (tokens.size() != 3) {
+                    continue;
+                }
+
+                float u = std::stof(tokens[1].c_str());
+                float v = std::stof(tokens[2].c_str());
+
+                m_uvs.push_back( { u, v } );
+            }
+
             if (line[0] == 'f' && line[1] == ' ') {
                 std::vector< std::string > tokens = splitString(line);
 
@@ -55,6 +69,9 @@ public:
 
                     int index = std::stoi(entries[0]) - 1;
                     m_indices.push_back(index);
+
+                    int index_uv = std::stoi(entries[1]) - 1;
+                    m_indices_uv.push_back(index_uv);
                 }
             }
         }
@@ -72,6 +89,16 @@ public:
             m_vertexes_f[i++] = m_vertexes[index].y;
             m_vertexes_f[i++] = m_vertexes[index].z;
         }
+
+        m_uvs_f.reset(new float[m_indices_uv.size() * 2]);
+
+        i = 0;
+        for (auto index : m_indices_uv) {
+            m_uvs_f[i++] = m_uvs[index].u;
+            m_uvs_f[i++] = m_uvs[index].v;
+        }
+
+        m_uv_f_size = m_indices_uv.size() * 2;
     }
 
     float* getVertexes() {
@@ -80,9 +107,18 @@ public:
     int numVertexes() {
         return m_vertexes_f_size;
     }
+    float* getUVs() {
+        return m_uvs_f.get();
+    }
+    int numUVs() {
+        return m_uv_f_size;
+    }
 private:
     struct vertex {
         float x, y, z;
+    };
+    struct uv {
+        float u, v;
     };
 
     std::vector< std::string > splitString(const std::string& str, char delim = ' ')
@@ -97,10 +133,14 @@ private:
     }
 
     int m_vertexes_f_size;
+    int m_uv_f_size;
 
     std::vector< vertex > m_vertexes;
+    std::vector< uv > m_uvs;
     std::vector< int > m_indices;
+    std::vector< int > m_indices_uv;
 
     std::unique_ptr< float[] > m_vertexes_f;
+    std::unique_ptr< float[] > m_uvs_f;
     std::unique_ptr< float > m_indices_f;
 };
