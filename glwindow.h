@@ -120,20 +120,34 @@ public:
 
         BitmapImage img("D://10.bmp");
 
+        glActiveTexture(GL_TEXTURE0);
         // Создадим одну текстуру OpenGL
         glGenTextures(1, &textureID);
-
         // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
         glBindTexture(GL_TEXTURE_2D, textureID);
-
         // Передадим изображение OpenGL
         glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img.getWidth(), img.getHeight(), 0, GL_BGR, GL_UNSIGNED_BYTE, img.getData());
-
         int g_nMaxAnisotropy;
         glGetIntegerv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,&g_nMaxAnisotropy);
 
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_ANISOTROPY_EXT,
                             g_nMaxAnisotropy-0.1);
+        // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        // Когда изображение уменьшается, то мы используем линейной смешивание 2х мипмапов, к которым также применяется линейная фильтрация
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        // И генерируем мипмап
+        glGenerateMipmap(GL_TEXTURE_2D);;
+
+        BitmapImage img2("D://10nm.bmp");
+
+        glActiveTexture(GL_TEXTURE1);
+        // Создадим одну текстуру OpenGL
+        glGenTextures(1, &textureNormID);
+        // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
+        glBindTexture(GL_TEXTURE_2D, textureNormID);
+        // Передадим изображение OpenGL
+        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img2.getWidth(), img2.getHeight(), 0, GL_BGR, GL_UNSIGNED_BYTE, img2.getData());
         // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         // Когда изображение уменьшается, то мы используем линейной смешивание 2х мипмапов, к которым также применяется линейная фильтрация
@@ -203,6 +217,11 @@ public:
         GLint cameraPosition = glGetUniformLocation(m_shaderProgram, "cameraPosition");
         glUniform4fv(cameraPosition, 1, glm::value_ptr(glm::vec4(objectX, objectY, objectZ, 1.0)));
 
+        GLuint myTextureSampler  = glGetUniformLocation(m_shaderProgram, "myTextureSampler");
+        glUniform1i(myTextureSampler, 0);
+        GLuint myTextureSampler2  = glGetUniformLocation(m_shaderProgram, "myTextureSampler2");
+        glUniform1i(myTextureSampler2, 1);
+
 //        GLint myTextureSampler = glGetUniformLocation(m_shaderProgram, "myTextureSampler");
 //        glUniformMatrix4fv(myTextureSampler, 1, GL_FALSE, glm::value_ptr(myTextureSampler));
 
@@ -230,8 +249,6 @@ public:
                     0,                                // stride
                     (void*)0                          // array buffer offset
                     );
-
-        glUniform1i(textureID, 0);
 
 
         glDrawArrays(GL_TRIANGLES, 0, obj.numVertexes());
@@ -278,6 +295,7 @@ private:
     GLuint uvbuffer;
     GLuint normbuffer;
     GLuint textureID;
+    GLuint textureNormID;
 
     Object obj;
 
@@ -331,25 +349,31 @@ private:
         in vec2 UV;
         in vec4 norm;
 
+        uniform mat4 modelMatrix;
+
 
         uniform sampler2D myTextureSampler;
+        uniform sampler2D myTextureSampler2;
 
         void main()
         {
-           //FragColor = vec3(dot(norm.xyz, lightDirection.xyz), 0.0, 0.0);
+           //vec4 normVec = modelMatrix * norm;
+           vec4 normVec = normalize(vec4(texture( myTextureSampler2, UV ).xyz * 2 - 1.0, 1.0));
+
+           //FragColor = vec3(dot(normVec.xyz, lightDirection.xyz), 0.0, 0.0);
            vec3 textureColor = texture( myTextureSampler, UV ).rgb;
 
            // Ambient
            vec3 ambientColor = textureColor * 0.2;
 
            // Diffuse
-           vec3 diffuseColor = textureColor * dot(norm.xyz, lightDirection.xyz);
+           vec3 diffuseColor = textureColor * dot(normVec.xyz, lightDirection.xyz);
            if(diffuseColor.x < 0 || diffuseColor.y < 0 || diffuseColor.z < 0) {
                 diffuseColor = vec3(0,0,0);
            }
 
            // Specular
-           vec3 R = 2*dot(norm.xyz, lightDirection.xyz) * norm.xyz - lightDirection.xyz;
+           vec3 R = 2*dot(normVec.xyz, lightDirection.xyz) * normVec.xyz - lightDirection.xyz;
            vec3 specularColor = textureColor * (dot(R, cameraDirection.xyz));
 
            if(specularColor.x < 0 || specularColor.y < 0 || specularColor.z < 0) {
