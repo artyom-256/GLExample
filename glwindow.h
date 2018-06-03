@@ -174,7 +174,7 @@ public:
 
         glGenBuffers(1, &bitangentsBuffer);
         glBindBuffer(GL_ARRAY_BUFFER, bitangentsBuffer);
-        glBufferData(GL_ARRAY_BUFFER, obj.getTangents().size() * sizeof(glm::vec3), &obj.getTangents()[0], GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, obj.getTangents().size() * sizeof(glm::vec3), &obj.getBitangents()[0], GL_STATIC_DRAW);
     }
     void render() {
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -401,11 +401,19 @@ private:
                 colorOutput = vec3(1, 0, 1);
             }
 
-             //lightDirection = normalize(TBN * LightDirection_cameraspace);
-             //cameraDirection =  normalize(TBN * EyeDirection_cameraspace);
+            //lightDirection = normalize(LightDirection_cameraspace);
+            //cameraDirection =  normalize(EyeDirection_cameraspace);
+            //norm = normalize(vec4(MV3x3 * vertexNormal_modelspace, 1.0));
             lightDirection = normalize(TBN * LightDirection_cameraspace);
             cameraDirection =  normalize(TBN * EyeDirection_cameraspace);
             norm = normalize(vec4(TBN * MV3x3 * vertexNormal_modelspace, 1.0));
+
+//            if (length(cross(vertexTangent_modelspace, vertexBitangent_modelspace)) < 0.1) {
+//                colorOutput = vec3(1,0,0);
+//            } else {
+//                colorOutput = vec3(0,1,0);
+//            }
+            //colorOutput = vec3(dot(lightDirection, mat3(inverse(TBN) * TBN) * lightDirection),0,0);
         }
     )";
     const char *fragmentShaderSource = R"(
