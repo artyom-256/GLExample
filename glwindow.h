@@ -208,7 +208,7 @@ public:
             100.0f             // Дальняя плоскость отсечения.
         );
 
-        glm::vec3 lightPosition3{0.0, 1.0, -10.0};
+        glm::vec3 lightPosition3{0.0, 0.0, -10.0};
 
         //glm::mat4 lightModelMatrix = glm::rotate(glm::mat4(1.0f), float(-glfwGetTime() * 3), glm::vec3(0, 1, 0));
         //lightPosition4 = lightModelMatrix * lightPosition4;
@@ -458,16 +458,16 @@ private:
            float specularFactor = max((dot(R, cameraDirection) * .5), 0) * .5;
            vec3 specularColor = textureColor * specularFactor;
 
-//           if (dot(norm.xyz, lightDirection) > 0) {
+           if (dot(norm.xyz, lightDirection) > 0) {
 
              FragColor = ambientColor +
                        diffuseColor +
                        specularColor +
                        0;
 
-//            } else {
-//               FragColor = ambientColor;
-//            }
+            } else {
+               FragColor = ambientColor;
+            }
         }
     )";
 
