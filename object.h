@@ -149,6 +149,16 @@ public:
             glm::vec2 uv1 = m_uvs[m_indices_uv[i + 1]];
             glm::vec2 uv2 = m_uvs[m_indices_uv[i + 2]];
 
+//            glm::vec3 nrm = m_normales[m_indices_norm[i]];
+
+//            glm::vec3 c1 = cross(nrm, glm::vec3(0.0, 0.0, 1.0));
+//            glm::vec3 c2 = cross(nrm, glm::vec3(0.0, 1.0, 0.0));
+//            glm::vec3 tangent = v0 + v1 + v2;
+//            glm::vec3 bitangent = glm::cross(nrm, tangent);
+
+//            tangent = glm::normalize(tangent);
+//            bitangent = glm::normalize(bitangent);
+
             // стороны треугольника
             glm::vec3 deltaPos1 = v1-v0;
             glm::vec3 deltaPos2 = v2-v0;
@@ -157,6 +167,9 @@ public:
             glm::vec2 deltaUV2 = uv2-uv0;
 
             float r = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV1.y * deltaUV2.x);
+            if (i == 3 * 5 || i == 3 * 11) {
+                r = -r;
+            }
             glm::vec3 tangent = (deltaPos1 * deltaUV2.y   - deltaPos2 * deltaUV1.y)*r;
             glm::vec3 bitangent = (deltaPos2 * deltaUV1.x   - deltaPos1 * deltaUV2.x)*r;
 
@@ -167,6 +180,22 @@ public:
             m_bitangents.push_back(bitangent);
             m_bitangents.push_back(bitangent);
             m_bitangents.push_back(bitangent);
+        }
+
+        // See "Going Further"
+        for (unsigned int i=0; i<m_indices.size(); i+=1 )
+        {
+            glm::vec3 & n = m_normales[m_indices_norm[i]];
+            glm::vec3 & t = m_tangents[i];
+            glm::vec3 & b = m_bitangents[i];
+
+            // Gram-Schmidt orthogonalize
+            t = glm::normalize(t - n * glm::dot(n, t));
+
+            // Calculate handedness
+            if (glm::dot(glm::cross(n, t), b) < 0.0f){
+                t = t * -1.0f;
+            }
         }
 
     }

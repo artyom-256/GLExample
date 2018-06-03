@@ -151,11 +151,12 @@ public:
         // Передадим изображение OpenGL
         glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img2.getWidth(), img2.getHeight(), 0, GL_BGR, GL_UNSIGNED_BYTE, img2.getData());
         // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        // Когда изображение уменьшается, то мы используем линейной смешивание 2х мипмапов, к которым также применяется линейная фильтрация
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        // И генерируем мипмап
-        glGenerateMipmap(GL_TEXTURE_2D);;
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            // ... which requires mipmaps. Generate them automatically.
+            glGenerateMipmap(GL_TEXTURE_2D);
 
 
 
@@ -207,7 +208,7 @@ public:
             100.0f             // Дальняя плоскость отсечения.
         );
 
-        glm::vec4 lightPosition4{10.0, 10.0, -10.0, 1.0};
+        glm::vec3 lightPosition3{-10.0, 10.0, -10.0};
 
         //glm::mat4 lightModelMatrix = glm::rotate(glm::mat4(1.0f), float(-glfwGetTime() * 3), glm::vec3(0, 1, 0));
         //lightPosition4 = lightModelMatrix * lightPosition4;
@@ -222,10 +223,10 @@ public:
         glUniformMatrix4fv(projectionMatrix, 1, GL_FALSE, glm::value_ptr(projectionMatrix4));
 
         GLint lightPosition = glGetUniformLocation(m_shaderProgram, "lightPosition");
-        glUniform4fv(lightPosition, 1, glm::value_ptr(lightPosition4));
+        glUniform3fv(lightPosition, 1, glm::value_ptr(lightPosition3));
 
         GLint cameraPosition = glGetUniformLocation(m_shaderProgram, "cameraPosition");
-        glUniform4fv(cameraPosition, 1, glm::value_ptr(glm::vec4(objectX, objectY, objectZ, 1.0)));
+        glUniform3fv(cameraPosition, 1, glm::value_ptr(glm::vec3(objectX, objectY, objectZ)));
 
         GLuint myTextureSampler  = glGetUniformLocation(m_shaderProgram, "myTextureSampler");
         glUniform1i(myTextureSampler, 0);
@@ -337,63 +338,83 @@ private:
 
     const char *vertexShaderSource = R"(
         #version 330 core
-        layout (location = 0) in vec3 aPos;
+        layout (location = 0) in vec3 vertexPosition_modelspace;
         layout (location = 1) in vec2 vertexUV;
-        layout (location = 2) in vec3 vertexNorm;
-        layout (location = 3) in vec3 tangent;
-        layout (location = 4) in vec3 bitangent;
+        layout (location = 2) in vec3 vertexNormal_modelspace;
+        layout (location = 3) in vec3 vertexTangent_modelspace;
+        layout (location = 4) in vec3 vertexBitangent_modelspace;
         uniform mat4 modelMatrix;
         uniform mat4 cameraMatrix;
         uniform mat4 projectionMatrix;
 
-        out vec4 colorOutput;
+        out vec3 colorOutput;
         out vec2 UV;
         out vec4 lightPos;
         out vec4 norm;
-        out vec4 lightDirection;
-        out vec4 cameraDirection;
+        out vec3 lightDirection;
+        out vec3 cameraDirection;
         out mat3 TBNout;
 
-        uniform vec4 lightPosition;
-        uniform vec4 cameraPosition;
+        uniform vec3 lightPosition;
+        uniform vec3 cameraPosition;
 
 
         void main()
         {
-            //vec4 position = vec4(aPos.x, aPos.y, aPos.z, 1.0) * cameraMatrix * modelMatrix * projectionMatrix;
             mat4 MVP = projectionMatrix * cameraMatrix * modelMatrix;
-            vec4 position = MVP * vec4(aPos.x, aPos.y, aPos.z, 1.0);
-            gl_Position = position;
 
-            UV = vertexUV;
-            norm = modelMatrix * vec4(vertexNorm, 1.0);
-            //lightDirection = normalize(lightPosition - modelMatrix * vec4(aPos, 1.0));
-            //cameraDirection = normalize(cameraPosition - modelMatrix * vec4(aPos, 1.0));
+            // Output position of the vertex, in clip space : MVP * position
+             gl_Position =  MVP * vec4(vertexPosition_modelspace,1);
 
-            vec3 vertexPosition_cameraspace = ( cameraMatrix * modelMatrix * vec4(aPos,1)).xyz;
-            vec3 cameraDirectionCam = normalize(vec3(0,0,0) - vertexPosition_cameraspace);
+             // Vector that goes from the vertex to the camera, in camera space.
+             // In camera space, the camera is at the origin (0,0,0).
+             vec3 vertexPosition_cameraspace = ( cameraMatrix * modelMatrix * vec4(vertexPosition_modelspace,1)).xyz;
+             vec3 EyeDirection_cameraspace = vec3(0,0,0) - vertexPosition_cameraspace;
 
-            vec3 LightPosition_cameraspace = ( cameraMatrix * lightPosition).xyz;
-            vec3 lightDirectionCam = normalize(LightPosition_cameraspace - vertexPosition_cameraspace);
+             // Vector that goes from the vertex to the light, in camera space. M is ommited because it's identity.
+             vec3 LightPosition_cameraspace = ( cameraMatrix * vec4(lightPosition,1)).xyz;
+             vec3 LightDirection_cameraspace = LightPosition_cameraspace + EyeDirection_cameraspace;
 
-            mat3 TBN = transpose(mat3(
-                 mat3(cameraMatrix * modelMatrix) * tangent,
-                 mat3(cameraMatrix * modelMatrix) * bitangent,
-                 mat3(cameraMatrix * modelMatrix) * vertexNorm
-            ));
-            TBNout = TBN;
+             // UV of the vertex. No special space for this one.
+             UV = vertexUV;
 
-            lightDirection = vec4(TBN * lightDirectionCam, 1.0);
-            cameraDirection = vec4(TBN * cameraDirectionCam, 1.0);
+             mat3 MV3x3 = mat3(cameraMatrix) * mat3(modelMatrix);
+
+             // model to camera = ModelView
+             vec3 vertexTangent_cameraspace = MV3x3 * vertexTangent_modelspace;
+             vec3 vertexBitangent_cameraspace = MV3x3 * vertexBitangent_modelspace;
+             vec3 vertexNormal_cameraspace = MV3x3 * vertexNormal_modelspace;
+
+             mat3 TBN = transpose(mat3(
+                 vertexTangent_cameraspace,
+                 vertexBitangent_cameraspace,
+                 vertexNormal_cameraspace
+             )); // You can use dot products instead of building this matrix and transposing it. See References for details.
+
+            //TBN = mat3(modelMatrix);
+
+            float res = length(cross(cross(vertexTangent_cameraspace, vertexBitangent_cameraspace), vertexNormal_cameraspace));
+
+            if (abs(res) < 0.0000001) {
+                colorOutput = vec3(0,1,0);
+            } else {
+                colorOutput = vec3(1, 0, 1);
+            }
+
+             //lightDirection = normalize(TBN * LightDirection_cameraspace);
+             //cameraDirection =  normalize(TBN * EyeDirection_cameraspace);
+            lightDirection = normalize(TBN * LightDirection_cameraspace);
+            cameraDirection =  normalize(TBN * EyeDirection_cameraspace);
+            norm = normalize(vec4(TBN * MV3x3 * vertexNormal_modelspace, 1.0));
         }
     )";
     const char *fragmentShaderSource = R"(
         #version 330 core
         out vec3 FragColor;
-        in vec4 colorOutput;
+        in vec3 colorOutput;
 
-        in vec4 lightDirection;
-        in vec4 cameraDirection;
+        in vec3 lightDirection;
+        in vec3 cameraDirection;
         in vec2 UV;
         in vec4 norm;
 
@@ -406,29 +427,39 @@ private:
 
         void main()
         {
-           //vec3 texNormVec = normalize(texture( myTextureSampler2, UV ).xyz * 2.0 - 1.0);
-           vec3 texNormVec = normalize(vec3(0.0, 1.0, 1.0));
+            //FragColor = colorOutput;
+            //return;
+           vec3 texNormVec = normalize(texture( myTextureSampler2, UV ).xyz * 2.0 - 1.0);
+           //vec3 texNormVec = normalize(vec3(0.0, 0.0, 1.0));
            vec4 normVec = vec4(texNormVec, 1.0);
+            //vec4 normVec = norm;
+            //vec4 normVec = vec4(0, 0, 1, 1);
 
-           //FragColor = vec3(dot(normVec.xyz, lightDirection.xyz), 0.0, 0.0);
+           //FragColor = vec3(dot(normVec.xyz, lightDirection), 0.0, 0.0);
            vec3 textureColor = texture( myTextureSampler, UV ).rgb;
 
            // Ambient
            vec3 ambientColor = textureColor * 0.2;
 
            // Diffuse
-           float diffuseFactor = max(dot(normVec.xyz, lightDirection.xyz), 0) * .5;
+           float diffuseFactor = max(dot(normVec.xyz, lightDirection), 0) * .5;
            vec3 diffuseColor = textureColor * diffuseFactor;
 
            // Specular
-           vec3 R = 2*dot(normVec.xyz, lightDirection.xyz) * normVec.xyz - lightDirection.xyz;
-           float specularFactor = max((dot(R, cameraDirection.xyz)) * .3, 0);
+           vec3 R = 2*dot(normVec.xyz, lightDirection) * normVec.xyz - lightDirection;
+           float specularFactor = max((dot(R, cameraDirection) * .5), 0);
            vec3 specularColor = textureColor * specularFactor;
 
-           FragColor = ambientColor +
+//           if (dot(norm.xyz, lightDirection) > 0) {
+
+             FragColor = ambientColor +
                        diffuseColor +
                        specularColor +
                        0;
+
+//            } else {
+//               FragColor = ambientColor;
+//            }
         }
     )";
 
