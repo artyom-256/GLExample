@@ -8,6 +8,10 @@
 #include <iostream>
 #include <memory>
 
+#include <glm/glm.hpp> // glm::vec3, glm::vec4, glm::ivec4, glm::mat4
+#include <glm/gtc/matrix_transform.hpp> // glm::translate, glm::rotate, glm::scale
+#include <glm/gtc/type_ptr.hpp> // glm::value_ptr
+
 class Object
 {
 public:
@@ -112,8 +116,8 @@ public:
 
         i = 0;
         for (auto index : m_indices_uv) {
-            m_uvs_f[i++] = m_uvs[index].u;
-            m_uvs_f[i++] = m_uvs[index].v;
+            m_uvs_f[i++] = m_uvs[index].x;
+            m_uvs_f[i++] = m_uvs[index].y;
         }
 
         m_uv_f_size = m_indices_uv.size() * 2;
@@ -132,6 +136,38 @@ public:
         }
 
         m_normales_size = m_indices_norm.size() * 3;
+
+
+        // Calculate tangents and bitangents
+
+        for (int i = 0; i < m_indices.size(); i+=3) {
+            glm::vec3 v0 = m_vertexes[m_indices[i]];
+            glm::vec3 v1 = m_vertexes[m_indices[i + 1]];
+            glm::vec3 v2 = m_vertexes[m_indices[i + 2]];
+
+            glm::vec2 uv0 = m_uvs[m_indices_uv[i]];
+            glm::vec2 uv1 = m_uvs[m_indices_uv[i + 1]];
+            glm::vec2 uv2 = m_uvs[m_indices_uv[i + 2]];
+
+            // стороны треугольника
+            glm::vec3 deltaPos1 = v1-v0;
+            glm::vec3 deltaPos2 = v2-v0;
+            // дельта UV
+            glm::vec2 deltaUV1 = uv1-uv0;
+            glm::vec2 deltaUV2 = uv2-uv0;
+
+            float r = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV1.y * deltaUV2.x);
+            glm::vec3 tangent = (deltaPos1 * deltaUV2.y   - deltaPos2 * deltaUV1.y)*r;
+            glm::vec3 bitangent = (deltaPos2 * deltaUV1.x   - deltaPos1 * deltaUV2.x)*r;
+
+            m_tangents.push_back(tangent);
+            m_tangents.push_back(tangent);
+            m_tangents.push_back(tangent);
+
+            m_bitangents.push_back(bitangent);
+            m_bitangents.push_back(bitangent);
+            m_bitangents.push_back(bitangent);
+        }
 
     }
 
@@ -153,12 +189,15 @@ public:
     int numNormales() {
         return m_normales_size;
     }
+    std::vector< glm::vec3 > getTangents() {
+        return m_tangents;
+    }
+    std::vector< glm::vec3 > getBitangents() {
+        return m_bitangents;
+    }
 private:
     struct vertex {
         float x, y, z;
-    };
-    struct uv {
-        float u, v;
     };
 
     std::vector< std::string > splitString(const std::string& str, char delim = ' ')
@@ -176,12 +215,14 @@ private:
     int m_uv_f_size;
     int m_normales_size;
 
-    std::vector< vertex > m_vertexes;
-    std::vector< uv > m_uvs;
+    std::vector< glm::vec3 > m_vertexes;
+    std::vector< glm::vec2 > m_uvs;
     std::vector< int > m_indices;
     std::vector< int > m_indices_uv;
     std::vector< int > m_indices_norm;
-    std::vector< vertex > m_normales;
+    std::vector< glm::vec3 > m_normales;
+    std::vector< glm::vec3 > m_tangents;
+    std::vector< glm::vec3 > m_bitangents;
 
     std::unique_ptr< float[] > m_vertexes_f;
     std::unique_ptr< float[] > m_uvs_f;

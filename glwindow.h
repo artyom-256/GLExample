@@ -85,6 +85,8 @@ public:
             // Accept fragment if it closer to the camera than the former one
             glDepthFunc(GL_LESS);
 
+            glEnable(GL_CULL_FACE);
+
 
         glGenVertexArrays(1, &m_VAO);
         glGenBuffers(1, &m_VBO);
@@ -164,6 +166,14 @@ public:
         glGenBuffers(1, &normbuffer);
         glBindBuffer(GL_ARRAY_BUFFER, normbuffer);
         glBufferData(GL_ARRAY_BUFFER, obj.numNormales() * sizeof(float), obj.getNormales(), GL_STATIC_DRAW);
+
+        glGenBuffers(1, &tangentsBuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, tangentsBuffer);
+        glBufferData(GL_ARRAY_BUFFER, obj.getTangents().size() * sizeof(glm::vec3), &obj.getTangents()[0], GL_STATIC_DRAW);
+
+        glGenBuffers(1, &bitangentsBuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, bitangentsBuffer);
+        glBufferData(GL_ARRAY_BUFFER, obj.getTangents().size() * sizeof(glm::vec3), &obj.getTangents()[0], GL_STATIC_DRAW);
     }
     void render() {
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -250,6 +260,28 @@ public:
                     (void*)0                          // array buffer offset
                     );
 
+        glEnableVertexAttribArray(3);
+        glBindBuffer(GL_ARRAY_BUFFER, tangentsBuffer);
+        glVertexAttribPointer(
+                    3,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+                    3,                                // size
+                    GL_FLOAT,                         // type
+                    GL_FALSE,                         // normalized?
+                    0,                                // stride
+                    (void*)0                          // array buffer offset
+                    );
+
+        glEnableVertexAttribArray(4);
+        glBindBuffer(GL_ARRAY_BUFFER, bitangentsBuffer);
+        glVertexAttribPointer(
+                    4,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+                    3,                                // size
+                    GL_FLOAT,                         // type
+                    GL_FALSE,                         // normalized?
+                    0,                                // stride
+                    (void*)0                          // array buffer offset
+                    );
+
 
         glDrawArrays(GL_TRIANGLES, 0, obj.numVertexes());
         // glBindVertexArray(0); // no need to unbind it every time
@@ -294,6 +326,9 @@ private:
 
     GLuint uvbuffer;
     GLuint normbuffer;
+    GLuint tangentsBuffer;
+    GLuint bitangentsBuffer;
+    GLuint rotationMatrixes;
     GLuint textureID;
     GLuint textureNormID;
 
@@ -305,6 +340,8 @@ private:
         layout (location = 0) in vec3 aPos;
         layout (location = 1) in vec2 vertexUV;
         layout (location = 2) in vec3 vertexNorm;
+        layout (location = 3) in vec3 tangent;
+        layout (location = 4) in vec3 bitangent;
         uniform mat4 modelMatrix;
         uniform mat4 cameraMatrix;
         uniform mat4 projectionMatrix;
@@ -315,6 +352,7 @@ private:
         out vec4 norm;
         out vec4 lightDirection;
         out vec4 cameraDirection;
+        out mat3 TBNout;
 
         uniform vec4 lightPosition;
         uniform vec4 cameraPosition;
@@ -326,17 +364,27 @@ private:
             mat4 MVP = projectionMatrix * cameraMatrix * modelMatrix;
             vec4 position = MVP * vec4(aPos.x, aPos.y, aPos.z, 1.0);
             gl_Position = position;
-            //colorOutput = vec4(normalize(aPos), 1.0);
-            if (aPos.z == 0.2f) {
-                colorOutput = vec4(1, 0, 0, 1);
-            } else {
-                colorOutput = vec4(0, 1, 0, 1);
-            }
 
             UV = vertexUV;
             norm = modelMatrix * vec4(vertexNorm, 1.0);
-            lightDirection = normalize(lightPosition - modelMatrix * vec4(aPos, 1.0));
-            cameraDirection = normalize(cameraPosition - modelMatrix * vec4(aPos, 1.0));
+            //lightDirection = normalize(lightPosition - modelMatrix * vec4(aPos, 1.0));
+            //cameraDirection = normalize(cameraPosition - modelMatrix * vec4(aPos, 1.0));
+
+            vec3 vertexPosition_cameraspace = ( cameraMatrix * modelMatrix * vec4(aPos,1)).xyz;
+            vec3 cameraDirectionCam = normalize(vec3(0,0,0) - vertexPosition_cameraspace);
+
+            vec3 LightPosition_cameraspace = ( cameraMatrix * lightPosition).xyz;
+            vec3 lightDirectionCam = normalize(LightPosition_cameraspace - vertexPosition_cameraspace);
+
+            mat3 TBN = transpose(mat3(
+                 mat3(cameraMatrix * modelMatrix) * tangent,
+                 mat3(cameraMatrix * modelMatrix) * bitangent,
+                 mat3(cameraMatrix * modelMatrix) * vertexNorm
+            ));
+            TBNout = TBN;
+
+            lightDirection = vec4(TBN * lightDirectionCam, 1.0);
+            cameraDirection = vec4(TBN * cameraDirectionCam, 1.0);
         }
     )";
     const char *fragmentShaderSource = R"(
@@ -350,6 +398,7 @@ private:
         in vec4 norm;
 
         uniform mat4 modelMatrix;
+        in mat3 TBNout;
 
 
         uniform sampler2D myTextureSampler;
@@ -357,8 +406,9 @@ private:
 
         void main()
         {
-           //vec4 normVec = modelMatrix * norm;
-           vec4 normVec = normalize(vec4(texture( myTextureSampler2, UV ).xyz * 2 - 1.0, 1.0));
+           //vec3 texNormVec = normalize(texture( myTextureSampler2, UV ).xyz * 2.0 - 1.0);
+           vec3 texNormVec = normalize(vec3(0.0, 1.0, 1.0));
+           vec4 normVec = vec4(texNormVec, 1.0);
 
            //FragColor = vec3(dot(normVec.xyz, lightDirection.xyz), 0.0, 0.0);
            vec3 textureColor = texture( myTextureSampler, UV ).rgb;
@@ -367,19 +417,13 @@ private:
            vec3 ambientColor = textureColor * 0.2;
 
            // Diffuse
-           vec3 diffuseColor = textureColor * dot(normVec.xyz, lightDirection.xyz);
-           if(diffuseColor.x < 0 || diffuseColor.y < 0 || diffuseColor.z < 0) {
-                diffuseColor = vec3(0,0,0);
-           }
+           float diffuseFactor = max(dot(normVec.xyz, lightDirection.xyz), 0) * .5;
+           vec3 diffuseColor = textureColor * diffuseFactor;
 
            // Specular
            vec3 R = 2*dot(normVec.xyz, lightDirection.xyz) * normVec.xyz - lightDirection.xyz;
-           vec3 specularColor = textureColor * (dot(R, cameraDirection.xyz));
-
-           if(specularColor.x < 0 || specularColor.y < 0 || specularColor.z < 0) {
-                specularColor = vec3(0,0,0);
-           }
-
+           float specularFactor = max((dot(R, cameraDirection.xyz)) * .3, 0);
+           vec3 specularColor = textureColor * specularFactor;
 
            FragColor = ambientColor +
                        diffuseColor +
