@@ -216,7 +216,7 @@ public:
         cameraMatrix4 = m_cameraRotation * cameraMatrix4;
         cameraMatrix4 = glm::translate(cameraMatrix4, -m_cameraPosition);
 
-        glm::mat4 modelMatrix4 = glm::rotate(glm::mat4(1.0f), float(glfwGetTime()), glm::vec3(0, 1, 0));
+        glm::mat4 modelMatrix4 = glm::rotate(glm::mat4(1.0f), glm::radians(65.0f)/*float(glfwGetTime())*/, glm::vec3(0, 1, 0));
 
         glm::mat4 projectionMatrix4 = glm::perspective(
             glm::radians(30.0f), // Вертикальное поле зрения в радианах. Обычно между 90&deg; (очень широкое) и 30&deg; (узкое)
@@ -227,8 +227,10 @@ public:
 
         glm::vec3 lightPosition3{0.0, 0.0, -10.0};
 
-        //glm::mat4 lightModelMatrix = glm::rotate(glm::mat4(1.0f), float(-glfwGetTime() * 3), glm::vec3(0, 1, 0));
-        //lightPosition4 = lightModelMatrix * lightPosition4;
+        lightPosition3 = m_cameraPosition;
+
+//        glm::mat4 lightModelMatrix = glm::rotate(glm::mat4(1.0f), float(-glfwGetTime() * 3), glm::vec3(0, 1, 0));
+//        lightPosition3 = glm::mat3(lightModelMatrix) * lightPosition3;
 
         GLint modelMatrix = glGetUniformLocation(m_shaderProgram, "modelMatrix");
         glUniformMatrix4fv(modelMatrix, 1, GL_FALSE, glm::value_ptr(modelMatrix4));
@@ -452,6 +454,7 @@ private:
 
         vec2 ParallaxMapping1(vec2 texCoords, vec3 viewDir);
         vec2 ParallaxMapping2(vec2 texCoords, vec3 viewDir);
+        bool IsInShadow(vec2 texCoords, vec3 viewDir);
 
         void main()
         {
@@ -459,7 +462,8 @@ private:
             vec2 texCoords = ParallaxMapping2(UV,  viewDir);
            if(texCoords.x > 1.0 || texCoords.y > 1.0 || texCoords.x < 0.0 || texCoords.y < 0.0)
            {
-               texCoords = UV;
+               discard;
+               //texCoords = UV;
            }
 
 
@@ -480,7 +484,7 @@ private:
            float specularFactor = max((dot(R, cameraDirection) * .5), 0) * .5;
            vec3 specularColor = textureColor * specularFactor;
 
-           if (dot(norm.xyz, lightDirection) > 0) {
+           if (dot(norm.xyz, lightDirection) > 0.0 && !IsInShadow(UV,  viewDir)) {
 
              FragColor = ambientColor +
                        diffuseColor +
@@ -507,7 +511,7 @@ private:
             const float height_scale = 0.1;
 
        // number of depth layers
-           const float numLayers = 100;
+           const float numLayers = 10;
            // calculate the size of each layer
            float layerDepth = 1.0 / numLayers;
            // depth of current layer
@@ -520,7 +524,7 @@ private:
 
            // get initial values
            vec2  currentTexCoords     = texCoords;
-           float currentDepthMapValue = texture(myTextureSampler3, currentTexCoords).r;
+           float currentDepthMapValue = texture(myTextureSampler3, currentTexCoords).r * 0.1;
            vec2 shift = vec2(0.0, 0.0);
 
            while(currentLayerDepth < currentDepthMapValue)
@@ -528,7 +532,7 @@ private:
                // shift texture coordinates along direction of P
                shift -= deltaTexCoords;
                // get depthmap value at current texture coordinates
-               currentDepthMapValue = texture(myTextureSampler3, currentTexCoords + shift).r;
+               currentDepthMapValue = texture(myTextureSampler3, currentTexCoords + shift).r * 0.1;
                // get depth of next layer
                currentLayerDepth += layerDepth;
            }
@@ -537,21 +541,55 @@ private:
            vec2 prevTexCoords = currentTexCoords + deltaTexCoords;
 
 
-           if (length(shift) > 0.015) {
-               shift = shift * (0.015 / length(shift));
-           }
+//           if (length(shift) > 0.015) {
+//               shift = shift * (0.015 / length(shift));
+//           }
 
             currentTexCoords += shift;
 
            // get depth after and before collision for linear interpolation
            float afterDepth  = currentDepthMapValue - currentLayerDepth;
-           float beforeDepth = texture(myTextureSampler3, prevTexCoords).r - currentLayerDepth + layerDepth;
+           float beforeDepth = texture(myTextureSampler3, prevTexCoords).r * 0.1 - currentLayerDepth + layerDepth;
 
            // interpolation of texture coordinates
            float weight = afterDepth / (afterDepth - beforeDepth);
            vec2 finalTexCoords = prevTexCoords * weight + currentTexCoords * (1.0 - weight);
 
-           return currentTexCoords;
+            //return currentTexCoords;
+            return finalTexCoords;
+       }
+
+
+       bool IsInShadow(vec2 texCoords, vec3 viewDir)
+       {
+            const float height_scale = 0.01;
+
+       // number of depth layers
+           const int numLayers = 10;
+           // calculate the size of each layer
+           float layerDepth = 1.0 / numLayers;
+           // depth of current layer
+           float currentLayerDepth = 0.0;
+           // the amount to shift the texture coordinates per layer (from vector P)
+           vec2 P = viewDir.xy * height_scale;
+           vec2 deltaTexCoords = P / numLayers;
+
+
+
+           // get initial values
+           vec2  currentTexCoords     = ParallaxMapping2(texCoords, viewDir);
+           float currentDepthMapValue = texture(myTextureSampler3, currentTexCoords).r * 0.1;
+           vec2 shift = vec2(0.0, 0.0);
+
+            vec3 P3 = viewDir * height_scale;
+
+           for(int i = 0; i < numLayers; i++) {
+               vec2 textCoords = currentTexCoords - i * P * layerDepth;
+               float depth = texture(myTextureSampler3, textCoords).r * 0.1;
+               float currHeight = (i * P3).z;
+               if (abs(currentDepthMapValue) - abs(depth) > 0.01) return true;
+           }
+            return false;
        }
     )";
 
