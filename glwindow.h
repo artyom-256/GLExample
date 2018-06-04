@@ -120,7 +120,7 @@ public:
         glBindVertexArray(0);
 
 
-        BitmapImage img("D://10.bmp");
+        BitmapImage img("D://11.bmp");
 
         glActiveTexture(GL_TEXTURE0);
         // Создадим одну текстуру OpenGL
@@ -141,7 +141,7 @@ public:
         // И генерируем мипмап
         glGenerateMipmap(GL_TEXTURE_2D);;
 
-        BitmapImage img2("D://10nm.bmp");
+        BitmapImage img2("D://11nm.bmp");
 
         glActiveTexture(GL_TEXTURE1);
         // Создадим одну текстуру OpenGL
@@ -158,6 +158,23 @@ public:
             // ... which requires mipmaps. Generate them automatically.
             glGenerateMipmap(GL_TEXTURE_2D);
 
+
+            BitmapImage img3("D://11dsp.bmp");
+
+        glActiveTexture(GL_TEXTURE2);
+        // Создадим одну текстуру OpenGL
+        glGenTextures(1, &textureDSPID);
+        // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
+        glBindTexture(GL_TEXTURE_2D, textureDSPID);
+        // Передадим изображение OpenGL
+        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img3.getWidth(), img3.getHeight(), 0, GL_BGR, GL_UNSIGNED_BYTE, img3.getData());
+        // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        // ... which requires mipmaps. Generate them automatically.
+        glGenerateMipmap(GL_TEXTURE_2D);
 
 
         glGenBuffers(1, &uvbuffer);
@@ -232,6 +249,8 @@ public:
         glUniform1i(myTextureSampler, 0);
         GLuint myTextureSampler2  = glGetUniformLocation(m_shaderProgram, "myTextureSampler2");
         glUniform1i(myTextureSampler2, 1);
+        GLuint myTextureSampler3  = glGetUniformLocation(m_shaderProgram, "myTextureSampler3");
+        glUniform1i(myTextureSampler3, 2);
 
 //        GLint myTextureSampler = glGetUniformLocation(m_shaderProgram, "myTextureSampler");
 //        glUniformMatrix4fv(myTextureSampler, 1, GL_FALSE, glm::value_ptr(myTextureSampler));
@@ -332,6 +351,7 @@ private:
     GLuint rotationMatrixes;
     GLuint textureID;
     GLuint textureNormID;
+    GLuint textureDSPID;
 
     Object obj;
 
@@ -354,6 +374,8 @@ private:
         out vec3 lightDirection;
         out vec3 cameraDirection;
         out mat3 TBNout;
+        out vec3 viewPosition_tangentspace;
+        out vec3 vertexPosition_tangentspace;
 
         uniform vec3 lightPosition;
         uniform vec3 cameraPosition;
@@ -391,8 +413,6 @@ private:
                  vertexNormal_cameraspace
              )); // You can use dot products instead of building this matrix and transposing it. See References for details.
 
-            //TBN = mat3(modelMatrix);
-
             float res = length(cross(cross(vertexTangent_cameraspace, vertexBitangent_cameraspace), vertexNormal_cameraspace));
 
             if (abs(res) < 0.0000001) {
@@ -401,19 +421,12 @@ private:
                 colorOutput = vec3(1, 0, 1);
             }
 
-            //lightDirection = normalize(LightDirection_cameraspace);
-            //cameraDirection =  normalize(EyeDirection_cameraspace);
-            //norm = normalize(vec4(MV3x3 * vertexNormal_modelspace, 1.0));
             lightDirection = normalize(TBN * LightDirection_cameraspace);
             cameraDirection =  normalize(TBN * EyeDirection_cameraspace);
             norm = normalize(vec4(TBN * MV3x3 * vertexNormal_modelspace, 1.0));
 
-//            if (length(cross(vertexTangent_modelspace, vertexBitangent_modelspace)) < 0.1) {
-//                colorOutput = vec3(1,0,0);
-//            } else {
-//                colorOutput = vec3(0,1,0);
-//            }
-            //colorOutput = vec3(dot(lightDirection, mat3(inverse(TBN) * TBN) * lightDirection),0,0);
+            viewPosition_tangentspace = TBN * cameraPosition;
+            vertexPosition_tangentspace = TBN * vertexPosition_modelspace;
         }
     )";
     const char *fragmentShaderSource = R"(
@@ -432,19 +445,28 @@ private:
 
         uniform sampler2D myTextureSampler;
         uniform sampler2D myTextureSampler2;
+        uniform sampler2D myTextureSampler3;
+
+        in vec3 viewPosition_tangentspace;
+        in vec3 vertexPosition_tangentspace;
+
+        vec2 ParallaxMapping1(vec2 texCoords, vec3 viewDir);
+        vec2 ParallaxMapping2(vec2 texCoords, vec3 viewDir);
 
         void main()
         {
-            //FragColor = colorOutput;
-            //return;
-           vec3 texNormVec = normalize(texture( myTextureSampler2, UV ).xyz * 2.0 - 1.0);
-           //vec3 texNormVec = normalize(vec3(0.0, 0.0, 1.0));
-           vec4 normVec = vec4(texNormVec, 1.0);
-            //vec4 normVec = norm;
-            //vec4 normVec = vec4(0, 0, 1, 1);
+            vec3 viewDir = normalize(viewPosition_tangentspace - vertexPosition_tangentspace);
+            vec2 texCoords = ParallaxMapping2(UV,  viewDir);
+           if(texCoords.x > 1.0 || texCoords.y > 1.0 || texCoords.x < 0.0 || texCoords.y < 0.0)
+           {
+               texCoords = UV;
+           }
 
-           //FragColor = vec3(dot(normVec.xyz, lightDirection), 0.0, 0.0);
-           vec3 textureColor = texture( myTextureSampler, UV ).rgb;
+
+           vec3 texNormVec = normalize(texture( myTextureSampler2, texCoords ).xyz * 2.0 - 1.0);
+           vec4 normVec = vec4(texNormVec, 1.0);
+
+           vec3 textureColor = texture( myTextureSampler, texCoords ).rgb;
 
            // Ambient
            vec3 ambientColor = textureColor * 0.2;
@@ -469,6 +491,68 @@ private:
                FragColor = ambientColor;
             }
         }
+
+       vec2 ParallaxMapping1(vec2 texCoords, vec3 viewDir)
+       {
+           float height =  texture(myTextureSampler3, texCoords).r;
+           vec2 p = viewDir.xy / viewDir.z * (height * 0.1);
+            if (length(p) > 0.015) {
+                p = p * (0.015 / length(p));
+            }
+           return texCoords - p;
+       }
+
+       vec2 ParallaxMapping2(vec2 texCoords, vec3 viewDir)
+       {
+            const float height_scale = 0.1;
+
+       // number of depth layers
+           const float numLayers = 100;
+           // calculate the size of each layer
+           float layerDepth = 1.0 / numLayers;
+           // depth of current layer
+           float currentLayerDepth = 0.0;
+           // the amount to shift the texture coordinates per layer (from vector P)
+           vec2 P = viewDir.xy * height_scale;
+           vec2 deltaTexCoords = P / numLayers;
+
+
+
+           // get initial values
+           vec2  currentTexCoords     = texCoords;
+           float currentDepthMapValue = texture(myTextureSampler3, currentTexCoords).r;
+           vec2 shift = vec2(0.0, 0.0);
+
+           while(currentLayerDepth < currentDepthMapValue)
+           {
+               // shift texture coordinates along direction of P
+               shift -= deltaTexCoords;
+               // get depthmap value at current texture coordinates
+               currentDepthMapValue = texture(myTextureSampler3, currentTexCoords + shift).r;
+               // get depth of next layer
+               currentLayerDepth += layerDepth;
+           }
+
+           // get texture coordinates before collision (reverse operations)
+           vec2 prevTexCoords = currentTexCoords + deltaTexCoords;
+
+
+           if (length(shift) > 0.015) {
+               shift = shift * (0.015 / length(shift));
+           }
+
+            currentTexCoords += shift;
+
+           // get depth after and before collision for linear interpolation
+           float afterDepth  = currentDepthMapValue - currentLayerDepth;
+           float beforeDepth = texture(myTextureSampler3, prevTexCoords).r - currentLayerDepth + layerDepth;
+
+           // interpolation of texture coordinates
+           float weight = afterDepth / (afterDepth - beforeDepth);
+           vec2 finalTexCoords = prevTexCoords * weight + currentTexCoords * (1.0 - weight);
+
+           return currentTexCoords;
+       }
     )";
 
     GLfloat objectX = 0;
