@@ -216,7 +216,7 @@ public:
         cameraMatrix4 = m_cameraRotation * cameraMatrix4;
         cameraMatrix4 = glm::translate(cameraMatrix4, -m_cameraPosition);
 
-        glm::mat4 modelMatrix4 = glm::rotate(glm::mat4(1.0f), glm::radians(65.0f)/*float(glfwGetTime())*/, glm::vec3(0, 1, 0));
+        glm::mat4 modelMatrix4 = glm::rotate(glm::mat4(1.0f), /*glm::radians(65.0f)*/float(glfwGetTime()) / 2, glm::vec3(0, 1, 0));
 
         glm::mat4 projectionMatrix4 = glm::perspective(
             glm::radians(30.0f), // Вертикальное поле зрения в радианах. Обычно между 90&deg; (очень широкое) и 30&deg; (узкое)
@@ -509,6 +509,7 @@ private:
        vec2 ParallaxMapping2(vec2 texCoords, vec3 viewDir)
        {
             const float height_scale = 0.1;
+            const float k = 1;
 
        // number of depth layers
            const float numLayers = 10;
@@ -524,15 +525,15 @@ private:
 
            // get initial values
            vec2  currentTexCoords     = texCoords;
-           float currentDepthMapValue = texture(myTextureSampler3, currentTexCoords).r * 0.1;
+           float currentDepthMapValue = texture(myTextureSampler3, currentTexCoords).r * k;
            vec2 shift = vec2(0.0, 0.0);
 
            while(currentLayerDepth < currentDepthMapValue)
            {
                // shift texture coordinates along direction of P
-               shift -= deltaTexCoords;
+               shift += deltaTexCoords;
                // get depthmap value at current texture coordinates
-               currentDepthMapValue = texture(myTextureSampler3, currentTexCoords + shift).r * 0.1;
+               currentDepthMapValue = texture(myTextureSampler3, currentTexCoords + shift).r * k;
                // get depth of next layer
                currentLayerDepth += layerDepth;
            }
@@ -549,20 +550,22 @@ private:
 
            // get depth after and before collision for linear interpolation
            float afterDepth  = currentDepthMapValue - currentLayerDepth;
-           float beforeDepth = texture(myTextureSampler3, prevTexCoords).r * 0.1 - currentLayerDepth + layerDepth;
+           float beforeDepth = texture(myTextureSampler3, prevTexCoords).r * k - currentLayerDepth + layerDepth;
 
            // interpolation of texture coordinates
            float weight = afterDepth / (afterDepth - beforeDepth);
            vec2 finalTexCoords = prevTexCoords * weight + currentTexCoords * (1.0 - weight);
 
-            //return currentTexCoords;
-            return finalTexCoords;
+            return currentTexCoords;
+            //return finalTexCoords;
        }
 
 
        bool IsInShadow(vec2 texCoords, vec3 viewDir)
        {
+            //return false;
             const float height_scale = 0.01;
+            const float k = 0.1;
 
        // number of depth layers
            const int numLayers = 10;
@@ -578,14 +581,14 @@ private:
 
            // get initial values
            vec2  currentTexCoords     = ParallaxMapping2(texCoords, viewDir);
-           float currentDepthMapValue = texture(myTextureSampler3, currentTexCoords).r * 0.1;
+           float currentDepthMapValue = texture(myTextureSampler3, currentTexCoords).r * k;
            vec2 shift = vec2(0.0, 0.0);
 
             vec3 P3 = viewDir * height_scale;
 
            for(int i = 0; i < numLayers; i++) {
-               vec2 textCoords = currentTexCoords - i * P * layerDepth;
-               float depth = texture(myTextureSampler3, textCoords).r * 0.1;
+               vec2 textCoords = currentTexCoords + i * P * layerDepth;
+               float depth = texture(myTextureSampler3, textCoords).r * k;
                float currHeight = (i * P3).z;
                if (abs(currentDepthMapValue) - abs(depth) > 0.01) return true;
            }
