@@ -1,5 +1,7 @@
 #pragma once
 
+#define GLEW_STATIC
+
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
@@ -18,7 +20,7 @@ class GLWindow : public std::enable_shared_from_this< GLWindow >
 {
 public:
     GLWindow(int width, int height, const char* title)
-        : obj("D://box.obj") {
+        : obj("box.obj") {
         m_window = glfwCreateWindow(width, height, title, NULL, NULL);
         if (m_window == NULL)
         {
@@ -95,16 +97,6 @@ public:
 
         glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
 
-//        float vertices[] = {
-//            -1.0f, -1.0f, 0.2f, // left
-//            0.0f, -1.0f, 0.2f, // right
-//            -0.5f,  1.0f, 0.2f,  // top
-
-//            1.0f, 1.0f, 0.5f, // left
-//            0.0f, 1.0f, 0.5f, // right
-//            0.5f,  -1.0f, 0.5f  // top
-//        };
-
         float *vertices = obj.getVertexes();
 
         glBufferData(GL_ARRAY_BUFFER, obj.numVertexes() * sizeof(float), vertices, GL_STATIC_DRAW);
@@ -120,7 +112,7 @@ public:
         glBindVertexArray(0);
 
 
-        BitmapImage img("D://11.bmp");
+        BitmapImage img("texture.bmp");
 
         glActiveTexture(GL_TEXTURE0);
         // Создадим одну текстуру OpenGL
@@ -141,7 +133,7 @@ public:
         // И генерируем мипмап
         glGenerateMipmap(GL_TEXTURE_2D);;
 
-        BitmapImage img2("D://11nm.bmp");
+        BitmapImage img2("normal.bmp");
 
         glActiveTexture(GL_TEXTURE1);
         // Создадим одну текстуру OpenGL
@@ -159,7 +151,7 @@ public:
             glGenerateMipmap(GL_TEXTURE_2D);
 
 
-            BitmapImage img3("D://11dsp.bmp");
+            BitmapImage img3("displacement.bmp");
 
         glActiveTexture(GL_TEXTURE2);
         // Создадим одну текстуру OpenGL
@@ -200,13 +192,6 @@ public:
         // draw our first triangle
         glUseProgram(m_shaderProgram);
 
-//        GLfloat matrix[16] { scale, 0, 0, objectX,
-//                             0, scale, 0, objectY,
-//                             0, 0, scale, objectZ,
-//                             0, 0, 0, 1 };
-        float camX = sin(glfwGetTime()) * 10;
-        float camZ = cos(glfwGetTime()) * 10;
-
         glm::mat4 cameraMatrix4 = glm::lookAt(
             glm::vec3(0, 0, 0), // Позиция камеры в мировом пространстве
             glm::vec3(0, 0, 1),   // Указывает куда вы смотрите в мировом пространстве
@@ -229,9 +214,6 @@ public:
 
         lightPosition3 = m_cameraPosition;
 
-//        glm::mat4 lightModelMatrix = glm::rotate(glm::mat4(1.0f), float(-glfwGetTime() * 3), glm::vec3(0, 1, 0));
-//        lightPosition3 = glm::mat3(lightModelMatrix) * lightPosition3;
-
         GLint modelMatrix = glGetUniformLocation(m_shaderProgram, "modelMatrix");
         glUniformMatrix4fv(modelMatrix, 1, GL_FALSE, glm::value_ptr(modelMatrix4));
 
@@ -245,7 +227,7 @@ public:
         glUniform3fv(lightPosition, 1, glm::value_ptr(lightPosition3));
 
         GLint cameraPosition = glGetUniformLocation(m_shaderProgram, "cameraPosition");
-        glUniform3fv(cameraPosition, 1, glm::value_ptr(glm::vec3(objectX, objectY, objectZ)));
+        glUniform3fv(cameraPosition, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, -10.0f)));
 
         GLuint myTextureSampler  = glGetUniformLocation(m_shaderProgram, "myTextureSampler");
         glUniform1i(myTextureSampler, 0);
@@ -253,9 +235,6 @@ public:
         glUniform1i(myTextureSampler2, 1);
         GLuint myTextureSampler3  = glGetUniformLocation(m_shaderProgram, "myTextureSampler3");
         glUniform1i(myTextureSampler3, 2);
-
-//        GLint myTextureSampler = glGetUniformLocation(m_shaderProgram, "myTextureSampler");
-//        glUniformMatrix4fv(myTextureSampler, 1, GL_FALSE, glm::value_ptr(myTextureSampler));
 
         glBindVertexArray(m_VAO); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
         std::cout << "NUM VERT " << obj.numVertexes();
@@ -306,10 +285,7 @@ public:
 
 
         glDrawArrays(GL_TRIANGLES, 0, obj.numVertexes());
-        // glBindVertexArray(0); // no need to unbind it every time
 
-        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-        // -------------------------------------------------------------------------------
         glfwSwapBuffers(m_window);
     }
     void processInput()
@@ -350,12 +326,14 @@ private:
     GLuint normbuffer;
     GLuint tangentsBuffer;
     GLuint bitangentsBuffer;
-    GLuint rotationMatrixes;
     GLuint textureID;
     GLuint textureNormID;
     GLuint textureDSPID;
 
     Object obj;
+
+    glm::vec3 m_cameraPosition{0, 0, -10.0};
+    glm::mat4 m_cameraRotation{1};
 
 
     const char *vertexShaderSource = R"(
@@ -595,13 +573,4 @@ private:
             return false;
        }
     )";
-
-    GLfloat objectX = 0;
-    GLfloat objectY = 0;
-    GLfloat objectZ = -10.0;
-    GLfloat scale = 1;
-    GLfloat rotationY = 0.0;
-
-    glm::vec3 m_cameraPosition{0, 0, -10.0};
-    glm::mat4 m_cameraRotation{1};
 };
