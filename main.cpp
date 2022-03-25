@@ -1,5 +1,5 @@
 #include "object.h"
-#include "bitmapimage.h"
+#include "bitmap_image.h"
 
 #define GLEW_STATIC
 

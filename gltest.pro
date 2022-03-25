@@ -13,9 +13,9 @@ LIBS+=$(GLEW_LIB)\libglew32.a
 LIBS+=$(STD_LIB)\libopengl32.a
 
 SOURCES += main.cpp \
-    object.cpp \
-    bitmapimage.cpp
+    bitmap_image.cpp \
+    object.cpp
 
 HEADERS += \
-    object.h \
-    bitmapimage.h
+    bitmap_image.h \
+    object.h
