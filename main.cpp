@@ -366,7 +366,7 @@ int main()
         glBindVertexArray(0);
 
 
-        BitmapImage img("texture.bmp");
+        bitmap_image img("texture.bmp");
 
         glActiveTexture(GL_TEXTURE0);
         // Создадим одну текстуру OpenGL
@@ -374,7 +374,7 @@ int main()
         // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
         glBindTexture(GL_TEXTURE_2D, textureID);
         // Передадим изображение OpenGL
-        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img.getWidth(), img.getHeight(), 0, GL_BGR, GL_UNSIGNED_BYTE, img.getData());
+        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img.width(), img.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, img.data());
         int g_nMaxAnisotropy;
         glGetIntegerv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,&g_nMaxAnisotropy);
 
@@ -387,7 +387,7 @@ int main()
         // И генерируем мипмап
         glGenerateMipmap(GL_TEXTURE_2D);;
 
-        BitmapImage img2("normal.bmp");
+        bitmap_image img2("normal.bmp");
 
         glActiveTexture(GL_TEXTURE1);
         // Создадим одну текстуру OpenGL
@@ -395,7 +395,7 @@ int main()
         // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
         glBindTexture(GL_TEXTURE_2D, textureNormID);
         // Передадим изображение OpenGL
-        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img2.getWidth(), img2.getHeight(), 0, GL_BGR, GL_UNSIGNED_BYTE, img2.getData());
+        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img2.width(), img2.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, img2.data());
         // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -405,7 +405,7 @@ int main()
             glGenerateMipmap(GL_TEXTURE_2D);
 
 
-            BitmapImage img3("displacement.bmp");
+            bitmap_image img3("displacement.bmp");
 
         glActiveTexture(GL_TEXTURE2);
         // Создадим одну текстуру OpenGL
@@ -413,7 +413,7 @@ int main()
         // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
         glBindTexture(GL_TEXTURE_2D, textureDSPID);
         // Передадим изображение OpenGL
-        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img3.getWidth(), img3.getHeight(), 0, GL_BGR, GL_UNSIGNED_BYTE, img3.getData());
+        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img3.width(), img3.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, img3.data());
         // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);

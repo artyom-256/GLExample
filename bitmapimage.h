@@ -1,65 +1,165 @@
 #pragma once
 
-#include <stdio.h>
+#include <fstream>
 
-class BitmapImage
+/**
+ * Helper class to read bitmap data from a *.bmp file.
+ */
+class bitmap_image
 {
 public:
-    BitmapImage(const char* fileName) {
-        // Данные, прочитанные из заголовка BMP-файла
-        unsigned char header[54]; // Каждый BMP-файл начинается с заголовка, длиной в 54 байта
-        unsigned int dataPos;     // Смещение данных в файле (позиция данных)
-
-        FILE * file = fopen(fileName,"rb");
-        if (!file) {
-          printf("Изображение не может быть открытоn");
-          return;
-        }
-
-        if ( fread(header, 1, 54, file) != 54 ) { // Если мы прочитали меньше 54 байт, значит возникла проблема
-            printf("Некорректный BMP-файлn");
+    /**
+     * Read a *.bmp file and extract bitmap data.
+     * @param fileName
+     */
+    bitmap_image(const char* fileName)
+        : m_data(nullptr)
+        , m_data_size(0)
+        , m_width(0)
+        , m_height(0)
+    {
+        // Open the file.
+        std::ifstream ifs(fileName);
+        if (!ifs) {
             return;
         }
-
-        if ( header[0]!='B' || header[1]!='M' ){
-            printf("Некорректный BMP-файлn");
+        // Read BMP header.
+        char header[HEADER_SIZE];
+        ifs.read(header, HEADER_SIZE);
+        if (!ifs) {
             return;
         }
-
-        // Читаем необходимые данные
-        dataPos    = *(int*)&(header[0x0A]); // Смещение данных изображения в файле
-        imageSize  = *(int*)&(header[0x22]); // Размер изображения в байтах
-        width      = *(int*)&(header[0x12]); // Ширина
-        height     = *(int*)&(header[0x16]); // Высота
-
-        // Некоторые BMP-файлы имеют нулевые поля imageSize и dataPos, поэтому исправим их
-        if (imageSize==0)    imageSize=width*height*3; // Ширину * Высоту * 3, где 3 - 3 компоненты цвета (RGB)
-        if (dataPos==0)      dataPos=54; // В таком случае, данные будут следовать сразу за заголовком
-
-        // Создаем буфер
-        data = new unsigned char [imageSize];
-
-        // Считываем данные из файла в буфер
-        fread(data,1,imageSize,file);
-
-        // Закрываем файл, так как больше он нам не нужен
-        fclose(file);
+        // Verify header signature.
+        if (header[0] != HEADER_SIGNATURE_1 || header[1] != HEADER_SIGNATURE_2){
+            return;
+        }
+        // Read bitmap metadata.
+        m_data_size = *(int32_t*)(&header[DATA_SIZE_OFFSET]);
+        m_width = *(int32_t*)(&header[WIDTH_OFFSET]);
+        m_height = *(int32_t*)(&header[HEIGHT_OFFSET]);
+        if (m_width == 0 || m_height == 0) {
+            m_data_size = 0;
+            m_width = 0;
+            m_height = 0;
+            return;
+        }
+        // Read bitmap data.
+        int dataPointer = *(int32_t*)(&header[DATA_POINTER_OFFSET]);
+        // If size of pointer are zero we should use default values.
+        if (m_data_size == 0) {
+            // Derive from the image size.
+            m_data_size = m_width * m_height * BYTES_PER_PIXEL;
+        }
+        if (dataPointer == 0){
+            // By default data starts right after header.
+            dataPointer = HEADER_SIZE;
+        }
+        // Read bitmap data.
+        m_data = new char[m_data_size];
+        ifs.read(m_data, m_data_size);
+        if (!ifs.good() && !ifs.eof()) {
+            delete[] m_data;
+            m_data = nullptr;
+            m_data_size = 0;
+            m_width = 0;
+            m_height = 0;
+        }
     }
-    unsigned char* getData() {
-        return data;
+    /**
+     * Destructor.
+     */
+    ~bitmap_image()
+    {
+        delete[] m_data;
+        m_data = nullptr;
+        m_data_size = 0;
+        m_width = 0;
+        m_height = 0;
+
     }
-    int getDataSize() {
-        return imageSize;
+    /**
+     * Return a pointer to the bitmap data.
+     * Each pixel is represented by 3 bytes.
+     * The pointer is only walid while the bitmap_image object exists.
+     * @return
+     */
+    char* data()
+    {
+        return m_data;
     }
-    int getWidth() {
-        return width;
+    /**
+     * Return size of the bitmap data.
+     * @return Size of the bitmap data in bytes.
+     */
+    int size()
+    {
+        return m_data_size;
     }
-    int getHeight() {
-        return height;
+    /**
+     * Return width of the bitmap in pixels.
+     * @return Width of the bitmap in pixels.
+     */
+    int width()
+    {
+        return m_width;
     }
+    /**
+     * Return height of the bitmap in pixels.
+     * @return Height of the bitmap in pixels.
+     */
+    int height()
+    {
+        return m_height;
+    }
+
 private:
-    unsigned char* data;
-    int imageSize;
-    int width;
-    int height;
+    /**
+     * Size of the BMP header in bytes.
+     */
+    constexpr static int HEADER_SIZE = 54;
+    /**
+     * First byte of the header signature.
+     */
+    constexpr static int HEADER_SIGNATURE_1 = 'B';
+    /**
+     * Second byte of the header signature.
+     */
+    constexpr static int HEADER_SIGNATURE_2 = 'M';
+    /**
+     * BMP uses 3 bytes per pixel: R, G and B.
+     */
+    constexpr static int BYTES_PER_PIXEL = 3;
+    /**
+     * Offset in the header for 4-bytes data size value.
+     */
+    constexpr static int DATA_SIZE_OFFSET = 0x22;
+    /**
+     * Offset in the header for 4-bytes data pointer.
+     */
+    constexpr static int DATA_POINTER_OFFSET = 0x0A;
+    /**
+     * Offset in the header for 4-bytes width value.
+     */
+    constexpr static int WIDTH_OFFSET = 0x12;
+    /**
+     * Offset in the header for 4-bytes height value.
+     */
+    constexpr static int HEIGHT_OFFSET = 0x16;
+
+    /**
+     * Bitmap data array.
+     */
+    char* m_data;
+    /**
+     * Bitmap data array size.
+     */
+    int32_t m_data_size;
+    /**
+     * Bitmap width in pixels.
+     */
+    int32_t m_width;
+    /**
+     * Bitmap height in pixels.
+     */
+    int32_t m_height;
 };
