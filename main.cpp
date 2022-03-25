@@ -5,6 +5,10 @@
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <iostream>
+
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 GLFWwindow* m_window;
 int m_shaderProgram;
@@ -351,9 +355,9 @@ int main()
 
         glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
 
-        float *vertices = obj.getVertexes();
+        const auto& vertices = obj.vertexes();
 
-        glBufferData(GL_ARRAY_BUFFER, obj.numVertexes() * sizeof(float), vertices, GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3), vertices.data(), GL_STATIC_DRAW);
 
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
@@ -425,19 +429,19 @@ int main()
 
         glGenBuffers(1, &uvbuffer);
         glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
-        glBufferData(GL_ARRAY_BUFFER, obj.numUVs() * sizeof(float), obj.getUVs(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, obj.uvs().size() * sizeof(glm::vec2), obj.uvs().data(), GL_STATIC_DRAW);
 
         glGenBuffers(1, &normbuffer);
         glBindBuffer(GL_ARRAY_BUFFER, normbuffer);
-        glBufferData(GL_ARRAY_BUFFER, obj.numNormales() * sizeof(float), obj.getNormales(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, obj.normals().size() * sizeof(glm::vec3), obj.normals().data(), GL_STATIC_DRAW);
 
         glGenBuffers(1, &tangentsBuffer);
         glBindBuffer(GL_ARRAY_BUFFER, tangentsBuffer);
-        glBufferData(GL_ARRAY_BUFFER, obj.getTangents().size() * sizeof(glm::vec3), &obj.getTangents()[0], GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, obj.tangents().size() * sizeof(glm::vec3), &obj.tangents()[0], GL_STATIC_DRAW);
 
         glGenBuffers(1, &bitangentsBuffer);
         glBindBuffer(GL_ARRAY_BUFFER, bitangentsBuffer);
-        glBufferData(GL_ARRAY_BUFFER, obj.getTangents().size() * sizeof(glm::vec3), &obj.getBitangents()[0], GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, obj.tangents().size() * sizeof(glm::vec3), &obj.bitangents()[0], GL_STATIC_DRAW);
 
         while (!glfwWindowShouldClose(m_window))
         {
@@ -495,7 +499,6 @@ int main()
             glUniform1i(myTextureSampler3, 2);
 
             glBindVertexArray(m_VAO); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
-            std::cout << "NUM VERT " << obj.numVertexes();
 
             glEnableVertexAttribArray(1);
             glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
@@ -542,7 +545,7 @@ int main()
                         );
 
 
-            glDrawArrays(GL_TRIANGLES, 0, obj.numVertexes());
+            glDrawArrays(GL_TRIANGLES, 0, obj.vertexes().size());
 
             glfwSwapBuffers(m_window);
 

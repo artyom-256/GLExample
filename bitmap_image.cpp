@@ -1,5 +1,7 @@
 #include "bitmap_image.h"
 
+#include <fstream>
+
 bitmap_image::bitmap_image(const char* fileName)
     : m_width(0)
     , m_height(0)

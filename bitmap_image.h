@@ -1,7 +1,7 @@
 #pragma once
 
-#include <fstream>
 #include <vector>
+#include <cstdint>
 
 /**
  * Helper class to read bitmap data from a *.bmp file.
