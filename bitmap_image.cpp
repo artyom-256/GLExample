@@ -1,9 +1,7 @@
 #include "bitmap_image.h"
 
 bitmap_image::bitmap_image(const char* fileName)
-    : m_data(nullptr)
-    , m_data_size(0)
-    , m_width(0)
+    : m_width(0)
     , m_height(0)
 {
     // Open the file.
@@ -22,11 +20,10 @@ bitmap_image::bitmap_image(const char* fileName)
         return;
     }
     // Read bitmap metadata.
-    m_data_size = *(int32_t*)(&header[DATA_SIZE_OFFSET]);
+    int dataSize = *(int32_t*)(&header[DATA_SIZE_OFFSET]);
     m_width = *(int32_t*)(&header[WIDTH_OFFSET]);
     m_height = *(int32_t*)(&header[HEIGHT_OFFSET]);
     if (m_width == 0 || m_height == 0) {
-        m_data_size = 0;
         m_width = 0;
         m_height = 0;
         return;
@@ -34,21 +31,19 @@ bitmap_image::bitmap_image(const char* fileName)
     // Read bitmap data.
     int dataPointer = *(int32_t*)(&header[DATA_POINTER_OFFSET]);
     // If size of pointer are zero we should use default values.
-    if (m_data_size == 0) {
+    if (dataSize == 0) {
         // Derive from the image size.
-        m_data_size = m_width * m_height * BYTES_PER_PIXEL;
+        dataSize = m_width * m_height * BYTES_PER_PIXEL;
     }
     if (dataPointer == 0){
         // By default data starts right after header.
         dataPointer = HEADER_SIZE;
     }
     // Read bitmap data.
-    m_data = new char[m_data_size];
-    ifs.read(m_data, m_data_size);
+    m_data.resize(dataSize);
+    ifs.read(&m_data[0], dataSize);
     if (!ifs.good() && !ifs.eof()) {
-        delete[] m_data;
-        m_data = nullptr;
-        m_data_size = 0;
+        m_data.clear();
         m_width = 0;
         m_height = 0;
     }
@@ -56,22 +51,13 @@ bitmap_image::bitmap_image(const char* fileName)
 
 bitmap_image::~bitmap_image()
 {
-    delete[] m_data;
-    m_data = nullptr;
-    m_data_size = 0;
     m_width = 0;
     m_height = 0;
-
 }
 
-char* bitmap_image::data() const
+const std::vector< char >& bitmap_image::data() const
 {
     return m_data;
-}
-
-int bitmap_image::size() const
-{
-    return m_data_size;
 }
 
 int bitmap_image::width() const

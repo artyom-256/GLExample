@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fstream>
+#include <vector>
 
 /**
  * Helper class to read bitmap data from a *.bmp file.
@@ -18,17 +19,11 @@ public:
      */
     ~bitmap_image();
     /**
-     * Return a pointer to the bitmap data.
+     * Return the bitmap data.
      * Each pixel is represented by 3 bytes.
-     * The pointer is only walid while the bitmap_image object exists.
-     * @return
+     * @return Bitmap data.
      */
-    char* data() const;
-    /**
-     * Return size of the bitmap data.
-     * @return Size of the bitmap data in bytes.
-     */
-    int size() const;
+    const std::vector< char >& data() const;
     /**
      * Return width of the bitmap in pixels.
      * @return Width of the bitmap in pixels.
@@ -77,11 +72,7 @@ private:
     /**
      * Bitmap data array.
      */
-    char* m_data;
-    /**
-     * Bitmap data array size.
-     */
-    int32_t m_data_size;
+    std::vector< char > m_data;
     /**
      * Bitmap width in pixels.
      */

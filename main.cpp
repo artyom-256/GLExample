@@ -19,7 +19,7 @@ GLuint textureID;
 GLuint textureNormID;
 GLuint textureDSPID;
 
-Object obj("box.obj");
+object obj("box.obj");
 
 glm::vec3 m_cameraPosition{0, 0, -10.0};
 glm::mat4 m_cameraRotation{1};
@@ -374,7 +374,7 @@ int main()
         // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
         glBindTexture(GL_TEXTURE_2D, textureID);
         // Передадим изображение OpenGL
-        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img.width(), img.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, img.data());
+        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img.width(), img.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &img.data()[0]);
         int g_nMaxAnisotropy;
         glGetIntegerv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,&g_nMaxAnisotropy);
 
@@ -395,7 +395,7 @@ int main()
         // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
         glBindTexture(GL_TEXTURE_2D, textureNormID);
         // Передадим изображение OpenGL
-        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img2.width(), img2.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, img2.data());
+        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img2.width(), img2.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &img2.data()[0]);
         // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -413,7 +413,7 @@ int main()
         // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
         glBindTexture(GL_TEXTURE_2D, textureDSPID);
         // Передадим изображение OpenGL
-        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img3.width(), img3.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, img3.data());
+        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img3.width(), img3.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &img3.data()[0]);
         // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
