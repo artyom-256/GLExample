@@ -29,241 +29,171 @@ glm::vec3 m_cameraPosition{0, 0, -10.0};
 glm::mat4 m_cameraRotation{1};
 
 
-const char *vertexShaderSource = R"(
+const char* vertexShaderSource = R"(
     #version 330 core
-    layout (location = 0) in vec3 vertexPosition_modelspace;
+
+    layout (location = 0) in vec3 vertexPosition;
     layout (location = 1) in vec2 vertexUV;
-    layout (location = 2) in vec3 vertexNormal_modelspace;
-    layout (location = 3) in vec3 vertexTangent_modelspace;
-    layout (location = 4) in vec3 vertexBitangent_modelspace;
+    layout (location = 2) in vec3 vertexNormal;
+    layout (location = 3) in vec3 vertexTangent;
+    layout (location = 4) in vec3 vertexBitangent;
+
+    out vec2 UV;
+    out vec3 lightDirection;
+    out vec3 cameraDirection;
+    out vec3 viewDirection;
+
     uniform mat4 modelMatrix;
     uniform mat4 cameraMatrix;
     uniform mat4 projectionMatrix;
-
-    out vec3 colorOutput;
-    out vec2 UV;
-    out vec4 lightPos;
-    out vec4 norm;
-    out vec3 lightDirection;
-    out vec3 cameraDirection;
-    out mat3 TBNout;
-    out vec3 viewPosition_tangentspace;
-    out vec3 vertexPosition_tangentspace;
-
     uniform vec3 lightPosition;
     uniform vec3 cameraPosition;
 
-
     void main()
     {
+        // Calculate full transformation matrix.
         mat4 MVP = projectionMatrix * cameraMatrix * modelMatrix;
 
-        // Output position of the vertex, in clip space : MVP * position
-         gl_Position =  MVP * vec4(vertexPosition_modelspace,1);
+        // Calculate direction from the vertex to the camera.
+        vec3 vertexPositionCameraSpace = (cameraMatrix * modelMatrix * vec4(vertexPosition, 1.0)).xyz;
+        vec3 eyeDirectionCameraSpace = vec3(0, 0, 0) - vertexPositionCameraSpace;
 
-         // Vector that goes from the vertex to the camera, in camera space.
-         // In camera space, the camera is at the origin (0,0,0).
-         vec3 vertexPosition_cameraspace = ( cameraMatrix * modelMatrix * vec4(vertexPosition_modelspace,1)).xyz;
-         vec3 EyeDirection_cameraspace = vec3(0,0,0) - vertexPosition_cameraspace;
+        // Calculation direction of the light.
+        vec3 lightPositionCameraSpace = (cameraMatrix * vec4(lightPosition,1)).xyz;
+        vec3 lightDirectionCameraSpace = lightPositionCameraSpace + eyeDirectionCameraSpace;
 
-         // Vector that goes from the vertex to the light, in camera space. M is ommited because it's identity.
-         vec3 LightPosition_cameraspace = ( cameraMatrix * vec4(lightPosition,1)).xyz;
-         vec3 LightDirection_cameraspace = LightPosition_cameraspace + EyeDirection_cameraspace;
+        // Rotation matrix to transform from model space to camera space.
+        mat3 MV3x3 = mat3(cameraMatrix) * mat3(modelMatrix);
 
-         // UV of the vertex. No special space for this one.
-         UV = vertexUV;
+        // Transform vectors to camera space.
+        vec3 vertexTangentCameraSpace = MV3x3 * vertexTangent;
+        vec3 vertexBitangentCameraSpace = MV3x3 * vertexBitangent;
+        vec3 vertexNormalCameraSpace = MV3x3 * vertexNormal;
 
-         mat3 MV3x3 = mat3(cameraMatrix) * mat3(modelMatrix);
+        // Inverse TBN matrix to transform from camera space to texture coordinates.
+        mat3 invTBN = transpose(mat3(
+            vertexTangentCameraSpace,
+            vertexBitangentCameraSpace,
+            vertexNormalCameraSpace
+        ));
 
-         // model to camera = ModelView
-         vec3 vertexTangent_cameraspace = MV3x3 * vertexTangent_modelspace;
-         vec3 vertexBitangent_cameraspace = MV3x3 * vertexBitangent_modelspace;
-         vec3 vertexNormal_cameraspace = MV3x3 * vertexNormal_modelspace;
+        // Output position of the vertex.
+        gl_Position =  MVP * vec4(vertexPosition, 1);
 
-         mat3 TBN = transpose(mat3(
-             vertexTangent_cameraspace,
-             vertexBitangent_cameraspace,
-             vertexNormal_cameraspace
-         )); // You can use dot products instead of building this matrix and transposing it. See References for details.
+        // Output texture coordinate.
+        UV = vertexUV;
 
-        float res = length(cross(cross(vertexTangent_cameraspace, vertexBitangent_cameraspace), vertexNormal_cameraspace));
+        // Output direction vectors in tangent coordinate system.
+        lightDirection = normalize(invTBN * lightDirectionCameraSpace);
+        cameraDirection =  normalize(invTBN * eyeDirectionCameraSpace);
 
-        if (abs(res) < 0.0000001) {
-            colorOutput = vec3(0,1,0);
-        } else {
-            colorOutput = vec3(1, 0, 1);
-        }
-
-        lightDirection = normalize(TBN * LightDirection_cameraspace);
-        cameraDirection =  normalize(TBN * EyeDirection_cameraspace);
-        norm = normalize(vec4(TBN * MV3x3 * vertexNormal_modelspace, 1.0));
-
-        viewPosition_tangentspace = TBN * cameraPosition;
-        vertexPosition_tangentspace = TBN * vertexPosition_modelspace;
+        // Output view direction in tangent space.
+        viewDirection = invTBN * vertexPosition - invTBN * cameraPosition;
     }
 )";
 const char *fragmentShaderSource = R"(
     #version 330 core
-    out vec3 FragColor;
-    in vec3 colorOutput;
 
+    in vec2 UV;
     in vec3 lightDirection;
     in vec3 cameraDirection;
-    in vec2 UV;
-    in vec4 norm;
+    in vec3 viewDirection;
+
+    out vec3 FragColor;
 
     uniform mat4 modelMatrix;
-    in mat3 TBNout;
+    uniform sampler2D colorTexture;
+    uniform sampler2D normalTexture;
+    uniform sampler2D parallaxTexture;
 
-
-    uniform sampler2D myTextureSampler;
-    uniform sampler2D myTextureSampler2;
-    uniform sampler2D myTextureSampler3;
-
-    in vec3 viewPosition_tangentspace;
-    in vec3 vertexPosition_tangentspace;
-
-    vec2 ParallaxMapping1(vec2 texCoords, vec3 viewDir);
-    vec2 ParallaxMapping2(vec2 texCoords, vec3 viewDir);
-    bool IsInShadow(vec2 texCoords, vec3 viewDir);
-
-    void main()
+    // Shift texture coordinates according to the parallax map.
+    // @param texCoords Original texture coordinates.
+    // @param viewDir Vector from camera to the point.
+    // @return New texture coordinates taking into account parallax.
+    vec2 parallaxMap(vec2 texCoords, vec3 viewDir)
     {
-        vec3 viewDir = normalize(viewPosition_tangentspace - vertexPosition_tangentspace);
-        vec2 texCoords = ParallaxMapping2(UV,  viewDir);
-       if(texCoords.x > 1.0 || texCoords.y > 1.0 || texCoords.x < 0.0 || texCoords.y < 0.0)
-       {
-           discard;
-           //texCoords = UV;
-       }
+        // Define how deep the parallax map is.
+        const float HEIGHT_SCALE = 0.07;
 
+        // Number of depth layers
+        const float NUM_LAYERS = 20;
 
-       vec3 texNormVec = normalize(texture( myTextureSampler2, texCoords ).xyz * 2.0 - 1.0);
-       vec4 normVec = vec4(texNormVec, 1.0);
+        // Calculate the size of each layer.
+        float layerDepth = 1.0 / NUM_LAYERS;
+        // Depth of current layer.
+        float currentLayerDepth = 0.0;
+        // Amount to shift the texture coordinates per layer (from vector P).
+        vec2 P = viewDir.xy * HEIGHT_SCALE;
+        vec2 deltaTexCoords = P / NUM_LAYERS;
 
-       vec3 textureColor = texture( myTextureSampler, texCoords ).rgb;
+        // Get initial values.
+        vec2  currentTexCoords     = texCoords;
+        float currentDepthMapValue = texture(parallaxTexture, currentTexCoords).r;
+        vec2 shift = vec2(0.0, 0.0);
 
-       // Ambient
-       vec3 ambientColor = textureColor * 0.2;
-
-       // Diffuse
-       float diffuseFactor = max(dot(normVec.xyz, lightDirection), 0);
-       vec3 diffuseColor = textureColor * diffuseFactor;
-
-       // Specular
-       vec3 R = 2*dot(normVec.xyz, lightDirection) * normVec.xyz - lightDirection;
-       float specularFactor = max((dot(R, cameraDirection) * .5), 0) * .5;
-       vec3 specularColor = textureColor * specularFactor;
-
-       if (dot(norm.xyz, lightDirection) > 0.0 && !IsInShadow(UV,  viewDir)) {
-
-         FragColor = ambientColor +
-                   diffuseColor +
-                   specularColor +
-                   0;
-
-        } else {
-           FragColor = ambientColor;
+        while(currentLayerDepth < currentDepthMapValue)
+        {
+            // shift texture coordinates along direction of P
+            shift -= deltaTexCoords;
+            // get depthmap value at current texture coordinates
+            currentDepthMapValue = texture(parallaxTexture, currentTexCoords + shift).r;
+            // get depth of next layer
+            currentLayerDepth += layerDepth;
         }
-    }
 
-   vec2 ParallaxMapping1(vec2 texCoords, vec3 viewDir)
-   {
-       float height =  texture(myTextureSampler3, texCoords).r;
-       vec2 p = viewDir.xy / viewDir.z * (height * 0.1);
-        if (length(p) > 0.015) {
-            p = p * (0.015 / length(p));
-        }
-       return texCoords - p;
-   }
-
-   vec2 ParallaxMapping2(vec2 texCoords, vec3 viewDir)
-   {
-        const float height_scale = 0.1;
-        const float k = 1;
-
-   // number of depth layers
-       const float numLayers = 10;
-       // calculate the size of each layer
-       float layerDepth = 1.0 / numLayers;
-       // depth of current layer
-       float currentLayerDepth = 0.0;
-       // the amount to shift the texture coordinates per layer (from vector P)
-       vec2 P = viewDir.xy * height_scale;
-       vec2 deltaTexCoords = P / numLayers;
-
-
-
-       // get initial values
-       vec2  currentTexCoords     = texCoords;
-       float currentDepthMapValue = texture(myTextureSampler3, currentTexCoords).r * k;
-       vec2 shift = vec2(0.0, 0.0);
-
-       while(currentLayerDepth < currentDepthMapValue)
-       {
-           // shift texture coordinates along direction of P
-           shift += deltaTexCoords;
-           // get depthmap value at current texture coordinates
-           currentDepthMapValue = texture(myTextureSampler3, currentTexCoords + shift).r * k;
-           // get depth of next layer
-           currentLayerDepth += layerDepth;
-       }
-
-       // get texture coordinates before collision (reverse operations)
-       vec2 prevTexCoords = currentTexCoords + deltaTexCoords;
-
-
-//           if (length(shift) > 0.015) {
-//               shift = shift * (0.015 / length(shift));
-//           }
+        // get texture coordinates before collision (reverse operations)
+        vec2 prevTexCoords = currentTexCoords + deltaTexCoords;
 
         currentTexCoords += shift;
 
-       // get depth after and before collision for linear interpolation
-       float afterDepth  = currentDepthMapValue - currentLayerDepth;
-       float beforeDepth = texture(myTextureSampler3, prevTexCoords).r * k - currentLayerDepth + layerDepth;
+        // get depth after and before collision for linear interpolation
+        float afterDepth  = currentDepthMapValue - currentLayerDepth;
+        float beforeDepth = texture(parallaxTexture, prevTexCoords).r - currentLayerDepth + layerDepth;
 
-       // interpolation of texture coordinates
-       float weight = afterDepth / (afterDepth - beforeDepth);
-       vec2 finalTexCoords = prevTexCoords * weight + currentTexCoords * (1.0 - weight);
+        // interpolation of texture coordinates
+        float weight = afterDepth / (afterDepth - beforeDepth);
+        vec2 finalTexCoords = prevTexCoords * weight + currentTexCoords * (1.0 - weight);
 
         return currentTexCoords;
-        //return finalTexCoords;
-   }
+    }
 
+    void main()
+    {
+        // Normalize input parameters after interpolation.
+        vec3 viewDirectionNormalized = normalize(viewDirection);
+        vec3 lightDirectionNormalized = normalize(lightDirection);
+        vec3 cameraDirectionNormalized = normalize(cameraDirection);
 
-   bool IsInShadow(vec2 texCoords, vec3 viewDir)
-   {
-        //return false;
-        const float height_scale = 0.01;
-        const float k = 0.1;
+        // Adjust the texture coordinate according to the parallax map.
+        vec2 texCoords = parallaxMap(UV,  viewDirectionNormalized);
 
-   // number of depth layers
-       const int numLayers = 10;
-       // calculate the size of each layer
-       float layerDepth = 1.0 / numLayers;
-       // depth of current layer
-       float currentLayerDepth = 0.0;
-       // the amount to shift the texture coordinates per layer (from vector P)
-       vec2 P = viewDir.xy * height_scale;
-       vec2 deltaTexCoords = P / numLayers;
+        // Discard fragments that are moved out from the texture after applying the parallax transformation.
+        if(texCoords.x > 1.0 || texCoords.y > 1.0 || texCoords.x < 0.0 || texCoords.y < 0.0)
+        {
+            discard;
+        }
 
+        // Read normal vector in texture coordinate system.
+        vec3 texNormalVector = normalize(texture(normalTexture, texCoords).xyz * 2.0 - 1.0);
+        vec4 normalVec = vec4(texNormalVector, 1.0);
 
+        // Read fragment color.
+        vec3 textureColor = texture(colorTexture, texCoords).rgb;
 
-       // get initial values
-       vec2  currentTexCoords     = ParallaxMapping2(texCoords, viewDir);
-       float currentDepthMapValue = texture(myTextureSampler3, currentTexCoords).r * k;
-       vec2 shift = vec2(0.0, 0.0);
+        // Ambient component of the color.
+        vec3 ambientColor = textureColor * 0.2;
 
-        vec3 P3 = viewDir * height_scale;
+        // Diffuse component of the color.
+        float diffuseFactor = max(dot(normalVec.xyz, lightDirectionNormalized), 0);
+        vec3 diffuseColor = textureColor * diffuseFactor;
 
-       for(int i = 0; i < numLayers; i++) {
-           vec2 textCoords = currentTexCoords + i * P * layerDepth;
-           float depth = texture(myTextureSampler3, textCoords).r * k;
-           float currHeight = (i * P3).z;
-           if (abs(currentDepthMapValue) - abs(depth) > 0.01) return true;
-       }
-        return false;
+        // Specular component of the color.
+        vec3 R = 2 * dot(normalVec.xyz, lightDirectionNormalized) * normalVec.xyz - lightDirectionNormalized;
+        float specularFactor = max((dot(R, cameraDirectionNormalized) * 0.5), 0) * 0.5;
+        vec3 specularColor = textureColor * specularFactor;
+
+        // Calculate fragment color.
+        FragColor = ambientColor + diffuseColor + specularColor;
    }
 )";
 
@@ -463,7 +393,8 @@ int main()
             cameraMatrix4 = m_cameraRotation * cameraMatrix4;
             cameraMatrix4 = glm::translate(cameraMatrix4, -m_cameraPosition);
 
-            glm::mat4 modelMatrix4 = glm::rotate(glm::mat4(1.0f), /*glm::radians(65.0f)*/float(glfwGetTime()) / 2, glm::vec3(0, 1, 0));
+            glm::mat4 modelMatrix4 = glm::rotate(glm::mat4(1.0f), float(glfwGetTime()) / 2, glm::vec3(0, 1, 0));
+            //modelMatrix4 *= glm::rotate(glm::mat4(1.0f), float(glfwGetTime()) / 4, glm::vec3(1, 0, 0));
 
             glm::mat4 projectionMatrix4 = glm::perspective(
                 glm::radians(30.0f), // Вертикальное поле зрения в радианах. Обычно между 90&deg; (очень широкое) и 30&deg; (узкое)
@@ -491,11 +422,11 @@ int main()
             GLint cameraPosition = glGetUniformLocation(m_shaderProgram, "cameraPosition");
             glUniform3fv(cameraPosition, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, -10.0f)));
 
-            GLuint myTextureSampler  = glGetUniformLocation(m_shaderProgram, "myTextureSampler");
+            GLuint myTextureSampler  = glGetUniformLocation(m_shaderProgram, "colorTexture");
             glUniform1i(myTextureSampler, 0);
-            GLuint myTextureSampler2  = glGetUniformLocation(m_shaderProgram, "myTextureSampler2");
+            GLuint myTextureSampler2  = glGetUniformLocation(m_shaderProgram, "normalTexture");
             glUniform1i(myTextureSampler2, 1);
-            GLuint myTextureSampler3  = glGetUniformLocation(m_shaderProgram, "myTextureSampler3");
+            GLuint myTextureSampler3  = glGetUniformLocation(m_shaderProgram, "parallaxTexture");
             glUniform1i(myTextureSampler3, 2);
 
             glBindVertexArray(m_VAO); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
