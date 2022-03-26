@@ -1,35 +1,31 @@
 #include "object.h"
 #include "bitmap_image.h"
 
+#include <iostream>
 #define GLEW_STATIC
-
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
-#include <iostream>
-
-#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
-GLFWwindow* m_window;
-int m_shaderProgram;
-unsigned int m_VAO;
-unsigned int m_VBO;
+/**
+ * Default window width.
+ */
+const int WINDOW_WIDTH = 800;
+/**
+ * Default window height.
+ */
+const int WINDOW_HEIGHT = 800;
+/**
+ * If the shader compilation fails, the error message will be printed out.
+ * The constant defines maximal size of the error message buffer.
+ */
+const int ERROR_BUFFER_SIZE = 512;
 
-GLuint uvbuffer;
-GLuint normbuffer;
-GLuint tangentsBuffer;
-GLuint bitangentsBuffer;
-GLuint textureID;
-GLuint textureNormID;
-GLuint textureDSPID;
-
-object obj("box.obj");
-
-glm::vec3 m_cameraPosition{0, 0, -10.0};
-glm::mat4 m_cameraRotation{1};
-
-
-const char* vertexShaderSource = R"(
+/**
+ * Vertex shader.
+ */
+const char* VERTEX_SHADER_SOURCE = R"(
     #version 330 core
 
     layout (location = 0) in vec3 vertexPosition;
@@ -91,7 +87,11 @@ const char* vertexShaderSource = R"(
         viewDirection = invTBN * vertexPosition - invTBN * cameraPosition;
     }
 )";
-const char *fragmentShaderSource = R"(
+
+/**
+ * Fragment shader.
+ */
+const char* FRAGMENT_SHADER_SOURCE = R"(
     #version 330 core
 
     in vec2 UV;
@@ -131,8 +131,7 @@ const char *fragmentShaderSource = R"(
         float currentDepthMapValue = texture(parallaxTexture, currentTexCoords).r;
         vec2 shift = vec2(0.0, 0.0);
 
-        while(currentLayerDepth < currentDepthMapValue)
-        {
+        while(currentLayerDepth < currentDepthMapValue) {
             // shift texture coordinates along direction of P
             shift -= deltaTexCoords;
             // get depthmap value at current texture coordinates
@@ -165,11 +164,10 @@ const char *fragmentShaderSource = R"(
         vec3 cameraDirectionNormalized = normalize(cameraDirection);
 
         // Adjust the texture coordinate according to the parallax map.
-        vec2 texCoords = parallaxMap(UV,  viewDirectionNormalized);
+        vec2 texCoords = parallaxMap(UV, viewDirectionNormalized);
 
         // Discard fragments that are moved out from the texture after applying the parallax transformation.
-        if(texCoords.x > 1.0 || texCoords.y > 1.0 || texCoords.x < 0.0 || texCoords.y < 0.0)
-        {
+        if(texCoords.x > 1.0 || texCoords.y > 1.0 || texCoords.x < 0.0 || texCoords.y < 0.0) {
             discard;
         }
 
@@ -197,159 +195,200 @@ const char *fragmentShaderSource = R"(
    }
 )";
 
-void framebufferSizeCallback(GLFWwindow* window, int width, int height) {
-    glViewport(0, 0, width, height);
+/**
+ * Structure attached to the window object.
+ */
+struct window_user_struct
+{
+    int width;
+    int height;
+};
+
+/**
+ * Callback for window size changed event.
+ * @param window Window that has triggered the event.
+ * @param width New width.
+ * @param height New height.
+ */
+void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+{
+    // Update size in the window struct object to use the new values during rendering.
+    window_user_struct* windowStruct = reinterpret_cast< window_user_struct* >(glfwGetWindowUserPointer(window));
+    windowStruct->width = width;
+    windowStruct->height = height;
 }
 
 int main()
 {
+    // Initalize GLFW.
     glfwInit();
     glfwWindowHint(GLFW_SAMPLES, 32);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    // Define structure that will be attached to the window object.
+    window_user_struct windowStruct = { WINDOW_WIDTH, WINDOW_HEIGHT };
+    // Create a window.
+    GLFWwindow* window = glfwCreateWindow(windowStruct.width, windowStruct.height, "GLExample", NULL, NULL);
+    if (!window) {
+        std::cout << "Failed to create a window!" << std::endl;
+        abort();
+    }
+    // Attach the structure to the window so we can always extract it in GLFW callbacks.
+    glfwSetWindowUserPointer(window, &windowStruct);
+    // Attach window resize listener.
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    // Select OpenGL context.
+    glfwMakeContextCurrent(window);
+
+    // Initialize OpenGL.
+    if (glewInit() != GLEW_OK)
     {
-        m_window = glfwCreateWindow(800, 600, "GLTest", NULL, NULL);
-        if (m_window == NULL)
-        {
-            std::cout << "Failed to create GLFW window" << std::endl;
-            glfwTerminate();
-        }
-        glfwMakeContextCurrent(m_window);
-        glfwSetFramebufferSizeCallback(m_window, framebufferSizeCallback);
+        std::cout << "Failed to initialize OpenGL!" << std::endl;
+        abort();
+    }
 
-        GLenum err = glewInit();
-        if (GLEW_OK != err)
-        {
-          /* Problem: glewInit failed, something is seriously wrong. */
-          fprintf(stderr, "Error: %s\n", glewGetErrorString(err));
-        }
-        fprintf(stdout, "Status: Using GLEW %s\n", glewGetString(GLEW_VERSION));
+    // Load and compile a vertex shader.
+    int vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &VERTEX_SHADER_SOURCE, NULL);
+    glCompileShader(vertexShader);
+    // Check for shader compilation errors.
+    int vertexShaderSuccess;
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &vertexShaderSuccess);
+    if (!vertexShaderSuccess) {
+        char infoLog[ERROR_BUFFER_SIZE];
+        glGetShaderInfoLog(vertexShader, ERROR_BUFFER_SIZE, NULL, infoLog);
+        std::cout << "Vertex shader compilation failed:" << std::endl << infoLog << std::endl;
+        abort();
+    }
 
-        // build and compile our shader program
-        // ------------------------------------
-        // vertex shader
-        int vertexShader = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-        glCompileShader(vertexShader);
-        // check for shader compile errors
-        int success;
-        char infoLog[512];
-        glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-        if (!success)
-        {
-            glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-            std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
-        }
-        // fragment shader
-        int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-        glCompileShader(fragmentShader);
-        // check for shader compile errors
-        glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-        if (!success)
-        {
-            glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-            std::cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << std::endl;
-        }
-        // link shaders
-        m_shaderProgram = glCreateProgram();
-        glAttachShader(m_shaderProgram, vertexShader);
-        glAttachShader(m_shaderProgram, fragmentShader);
+    // Load and compile a fragment shader.
+    int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &FRAGMENT_SHADER_SOURCE, NULL);
+    glCompileShader(fragmentShader);
+    // Check for shader compilation errors.
+    int fragmentShaderSuccess;
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &fragmentShaderSuccess);
+    if (!fragmentShaderSuccess) {
+        char infoLog[ERROR_BUFFER_SIZE];
+        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+        std::cout << "Fragment shader compilation failed:" << std::endl << infoLog << std::endl;
+        abort();
+    }
 
-        glLinkProgram(m_shaderProgram);
-        // check for linking errors
-        glGetProgramiv(m_shaderProgram, GL_LINK_STATUS, &success);
-        if (!success) {
-            glGetProgramInfoLog(m_shaderProgram, 512, NULL, infoLog);
-            std::cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
-        }
-        glDeleteShader(vertexShader);
-        glDeleteShader(fragmentShader);
+    // Link shaders into a shader program.
+    auto shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
 
-        // set up vertex data (and buffer(s)) and configure vertex attributes
-        // ------------------------------------------------------------------
+    glLinkProgram(shaderProgram);
+    // check for linking errors
+    int programSuccess;
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &programSuccess);
+    if (!programSuccess) {
+        char infoLog[ERROR_BUFFER_SIZE];
+        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+        std::cout << "Program linking failed:" << std::endl << infoLog << std::endl;
+        abort();
+    }
 
-        // Enable depth test
-            glEnable(GL_DEPTH_TEST);
-            // Accept fragment if it closer to the camera than the former one
-            glDepthFunc(GL_LESS);
+    // Delete shaders after the program is linked.
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
 
-            glEnable(GL_CULL_FACE);
+    // Read a 3D object.
+    object obj("box.obj");
+    if (obj.vertexes().size() == 0) {
+        std::cout << "Cannot read a 3D model from the file!" << std::endl;
+        abort();
+    }
 
+    // set up vertex data (and buffer(s)) and configure vertex attributes
+    // ------------------------------------------------------------------
 
-        glGenVertexArrays(1, &m_VAO);
-        glGenBuffers(1, &m_VBO);
-        // bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
-        glBindVertexArray(m_VAO);
+    GLuint vao;
+    glGenVertexArrays(1, &vao);
+    // bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
+    glBindVertexArray(vao);
 
-        glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, obj.vertexes().size() * sizeof(glm::vec3), obj.vertexes().data(), GL_STATIC_DRAW);
 
-        const auto& vertices = obj.vertexes();
+    // You can unbind the VAO afterwards so other VAO calls won't accidentally modify this VAO, but this rarely happens. Modifying other
+    // VAOs requires a call to glBindVertexArray anyways so we generally don't unbind VAOs (nor VBOs) when it's not directly necessary.
 
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3), vertices.data(), GL_STATIC_DRAW);
+    GLuint uvbuffer;
+    glGenBuffers(1, &uvbuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+    glBufferData(GL_ARRAY_BUFFER, obj.uvs().size() * sizeof(glm::vec2), obj.uvs().data(), GL_STATIC_DRAW);
 
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
-        // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    GLuint normbuffer;
+    glGenBuffers(1, &normbuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, normbuffer);
+    glBufferData(GL_ARRAY_BUFFER, obj.normals().size() * sizeof(glm::vec3), obj.normals().data(), GL_STATIC_DRAW);
 
-        // You can unbind the VAO afterwards so other VAO calls won't accidentally modify this VAO, but this rarely happens. Modifying other
-        // VAOs requires a call to glBindVertexArray anyways so we generally don't unbind VAOs (nor VBOs) when it's not directly necessary.
-        glBindVertexArray(0);
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
+    GLuint tangentsBuffer;
+    glGenBuffers(1, &tangentsBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, tangentsBuffer);
+    glBufferData(GL_ARRAY_BUFFER, obj.tangents().size() * sizeof(glm::vec3), &obj.tangents()[0], GL_STATIC_DRAW);
 
-        bitmap_image img("texture.bmp");
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
-        glActiveTexture(GL_TEXTURE0);
-        // Создадим одну текстуру OpenGL
-        glGenTextures(1, &textureID);
-        // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
-        glBindTexture(GL_TEXTURE_2D, textureID);
-        // Передадим изображение OpenGL
-        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img.width(), img.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &img.data()[0]);
-        int g_nMaxAnisotropy;
-        glGetIntegerv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,&g_nMaxAnisotropy);
+    GLuint bitangentsBuffer;
+    glGenBuffers(1, &bitangentsBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, bitangentsBuffer);
+    glBufferData(GL_ARRAY_BUFFER, obj.tangents().size() * sizeof(glm::vec3), &obj.bitangents()[0], GL_STATIC_DRAW);
 
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_ANISOTROPY_EXT,
-                            g_nMaxAnisotropy-0.1);
-        // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        // Когда изображение уменьшается, то мы используем линейной смешивание 2х мипмапов, к которым также применяется линейная фильтрация
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        // И генерируем мипмап
-        glGenerateMipmap(GL_TEXTURE_2D);;
-
-        bitmap_image img2("normal.bmp");
-
-        glActiveTexture(GL_TEXTURE1);
-        // Создадим одну текстуру OpenGL
-        glGenTextures(1, &textureNormID);
-        // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
-        glBindTexture(GL_TEXTURE_2D, textureNormID);
-        // Передадим изображение OpenGL
-        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img2.width(), img2.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &img2.data()[0]);
-        // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-            // ... which requires mipmaps. Generate them automatically.
-            glGenerateMipmap(GL_TEXTURE_2D);
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
 
-            bitmap_image img3("displacement.bmp");
+    glBindVertexArray(0);
 
-        glActiveTexture(GL_TEXTURE2);
-        // Создадим одну текстуру OpenGL
-        glGenTextures(1, &textureDSPID);
-        // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
-        glBindTexture(GL_TEXTURE_2D, textureDSPID);
-        // Передадим изображение OpenGL
-        glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img3.width(), img3.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &img3.data()[0]);
-        // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+
+    bitmap_image img("texture.bmp");
+
+    glActiveTexture(GL_TEXTURE0);
+    // Создадим одну текстуру OpenGL
+    GLuint textureID;
+    glGenTextures(1, &textureID);
+    // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    // Передадим изображение OpenGL
+    glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img.width(), img.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &img.data()[0]);
+    int g_nMaxAnisotropy;
+    glGetIntegerv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,&g_nMaxAnisotropy);
+
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_ANISOTROPY_EXT,
+                        g_nMaxAnisotropy-0.1);
+    // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Когда изображение уменьшается, то мы используем линейной смешивание 2х мипмапов, к которым также применяется линейная фильтрация
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    // И генерируем мипмап
+    glGenerateMipmap(GL_TEXTURE_2D);;
+
+    bitmap_image img2("normal.bmp");
+
+    glActiveTexture(GL_TEXTURE1);
+    // Создадим одну текстуру OpenGL
+    GLuint textureNormID;
+    glGenTextures(1, &textureNormID);
+    // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
+    glBindTexture(GL_TEXTURE_2D, textureNormID);
+    // Передадим изображение OpenGL
+    glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img2.width(), img2.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &img2.data()[0]);
+    // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
@@ -357,148 +396,159 @@ int main()
         glGenerateMipmap(GL_TEXTURE_2D);
 
 
-        glGenBuffers(1, &uvbuffer);
+        bitmap_image img3("displacement.bmp");
+
+    glActiveTexture(GL_TEXTURE2);
+    GLuint textureDSPID;
+    // Создадим одну текстуру OpenGL
+    glGenTextures(1, &textureDSPID);
+    // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
+    glBindTexture(GL_TEXTURE_2D, textureDSPID);
+    // Передадим изображение OpenGL
+    glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img3.width(), img3.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &img3.data()[0]);
+    // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    // ... which requires mipmaps. Generate them automatically.
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+
+
+    glEnable(GL_DEPTH_TEST);
+    // Accept fragment if it closer to the camera than the former one
+    glDepthFunc(GL_LESS);
+
+    glEnable(GL_CULL_FACE);
+
+    while (!glfwWindowShouldClose(window))
+    {
+        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // draw our first triangle
+        glUseProgram(shaderProgram);
+
+        glm::mat4 cameraMatrix4 = glm::lookAt(
+            glm::vec3(0, 0, 0), // Позиция камеры в мировом пространстве
+            glm::vec3(0, 0, 1),   // Указывает куда вы смотрите в мировом пространстве
+            glm::vec3(0, 1, 0)        // Вектор, указывающий направление вверх. Обычно (0, 1, 0)
+        );
+
+        glm::vec3 cameraPosition(0, 0, -7.0);
+        glm::mat4 m_cameraRotation(1);
+
+        cameraMatrix4 = m_cameraRotation * cameraMatrix4;
+        cameraMatrix4 = glm::translate(cameraMatrix4, -cameraPosition);
+
+        glm::mat4 modelMatrix4 = glm::rotate(glm::mat4(1.0f), float(glfwGetTime()) / 2, glm::vec3(0, 1, 0));
+        modelMatrix4 *= glm::rotate(glm::mat4(1.0f), float(glfwGetTime()) / 4, glm::vec3(1, 0, 0));
+
+        glm::mat4 projectionMatrix4 = glm::perspective(
+            glm::radians(30.0f), // Вертикальное поле зрения в радианах. Обычно между 90&deg; (очень широкое) и 30&deg; (узкое)
+            float(windowStruct.width) / windowStruct.height,       // Отношение сторон. Зависит от размеров вашего окна. Заметьте, что 4/3 == 800/600 == 1280/960
+            0.1f,              // Ближняя плоскость отсечения. Должна быть больше 0.
+            100.0f             // Дальняя плоскость отсечения.
+        );
+
+        glm::vec3 lightPosition3(0.0, 0.0, -10.0);
+
+        lightPosition3 = cameraPosition;
+
+        GLint modelMatrix = glGetUniformLocation(shaderProgram, "modelMatrix");
+        glUniformMatrix4fv(modelMatrix, 1, GL_FALSE, glm::value_ptr(modelMatrix4));
+
+        GLint cameraMatrix = glGetUniformLocation(shaderProgram, "cameraMatrix");
+        glUniformMatrix4fv(cameraMatrix, 1, GL_FALSE, glm::value_ptr(cameraMatrix4));
+
+        GLint projectionMatrix = glGetUniformLocation(shaderProgram, "projectionMatrix");
+        glUniformMatrix4fv(projectionMatrix, 1, GL_FALSE, glm::value_ptr(projectionMatrix4));
+
+        GLint lightPosition = glGetUniformLocation(shaderProgram, "lightPosition");
+        glUniform3fv(lightPosition, 1, glm::value_ptr(lightPosition3));
+
+        GLint cameraPositionLocation = glGetUniformLocation(shaderProgram, "cameraPosition");
+        glUniform3fv(cameraPositionLocation, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, -10.0f)));
+
+        GLuint myTextureSampler  = glGetUniformLocation(shaderProgram, "colorTexture");
+        glUniform1i(myTextureSampler, 0);
+        GLuint myTextureSampler2  = glGetUniformLocation(shaderProgram, "normalTexture");
+        glUniform1i(myTextureSampler2, 1);
+        GLuint myTextureSampler3  = glGetUniformLocation(shaderProgram, "parallaxTexture");
+        glUniform1i(myTextureSampler3, 2);
+
+        glBindVertexArray(vao); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
+
+        glEnableVertexAttribArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glVertexAttribPointer(
+                    0,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+                    3,                                // size : U+V => 2
+                    GL_FLOAT,                         // type
+                    GL_FALSE,                         // normalized?
+                    0,                                // stride
+                    (void*)0                          // array buffer offset
+                    );
+
+
+        glEnableVertexAttribArray(1);
         glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
-        glBufferData(GL_ARRAY_BUFFER, obj.uvs().size() * sizeof(glm::vec2), obj.uvs().data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(
+                    1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+                    2,                                // size : U+V => 2
+                    GL_FLOAT,                         // type
+                    GL_FALSE,                         // normalized?
+                    0,                                // stride
+                    (void*)0                          // array buffer offset
+                    );
 
-        glGenBuffers(1, &normbuffer);
+        glEnableVertexAttribArray(2);
         glBindBuffer(GL_ARRAY_BUFFER, normbuffer);
-        glBufferData(GL_ARRAY_BUFFER, obj.normals().size() * sizeof(glm::vec3), obj.normals().data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(
+                    2,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+                    3,                                // size : U+V => 2
+                    GL_FLOAT,                         // type
+                    GL_FALSE,                         // normalized?
+                    0,                                // stride
+                    (void*)0                          // array buffer offset
+                    );
 
-        glGenBuffers(1, &tangentsBuffer);
+        glEnableVertexAttribArray(3);
         glBindBuffer(GL_ARRAY_BUFFER, tangentsBuffer);
-        glBufferData(GL_ARRAY_BUFFER, obj.tangents().size() * sizeof(glm::vec3), &obj.tangents()[0], GL_STATIC_DRAW);
+        glVertexAttribPointer(
+                    3,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+                    3,                                // size
+                    GL_FLOAT,                         // type
+                    GL_FALSE,                         // normalized?
+                    0,                                // stride
+                    (void*)0                          // array buffer offset
+                    );
 
-        glGenBuffers(1, &bitangentsBuffer);
+        glEnableVertexAttribArray(4);
         glBindBuffer(GL_ARRAY_BUFFER, bitangentsBuffer);
-        glBufferData(GL_ARRAY_BUFFER, obj.tangents().size() * sizeof(glm::vec3), &obj.bitangents()[0], GL_STATIC_DRAW);
-
-        while (!glfwWindowShouldClose(m_window))
-        {
-            glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-
-            glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            // draw our first triangle
-            glUseProgram(m_shaderProgram);
-
-            glm::mat4 cameraMatrix4 = glm::lookAt(
-                glm::vec3(0, 0, 0), // Позиция камеры в мировом пространстве
-                glm::vec3(0, 0, 1),   // Указывает куда вы смотрите в мировом пространстве
-                glm::vec3(0, 1, 0)        // Вектор, указывающий направление вверх. Обычно (0, 1, 0)
-            );
-
-            cameraMatrix4 = m_cameraRotation * cameraMatrix4;
-            cameraMatrix4 = glm::translate(cameraMatrix4, -m_cameraPosition);
-
-            glm::mat4 modelMatrix4 = glm::rotate(glm::mat4(1.0f), float(glfwGetTime()) / 2, glm::vec3(0, 1, 0));
-            //modelMatrix4 *= glm::rotate(glm::mat4(1.0f), float(glfwGetTime()) / 4, glm::vec3(1, 0, 0));
-
-            glm::mat4 projectionMatrix4 = glm::perspective(
-                glm::radians(30.0f), // Вертикальное поле зрения в радианах. Обычно между 90&deg; (очень широкое) и 30&deg; (узкое)
-                4.0f / 3.0f,       // Отношение сторон. Зависит от размеров вашего окна. Заметьте, что 4/3 == 800/600 == 1280/960
-                0.1f,              // Ближняя плоскость отсечения. Должна быть больше 0.
-                100.0f             // Дальняя плоскость отсечения.
-            );
-
-            glm::vec3 lightPosition3{0.0, 0.0, -10.0};
-
-            lightPosition3 = m_cameraPosition;
-
-            GLint modelMatrix = glGetUniformLocation(m_shaderProgram, "modelMatrix");
-            glUniformMatrix4fv(modelMatrix, 1, GL_FALSE, glm::value_ptr(modelMatrix4));
-
-            GLint cameraMatrix = glGetUniformLocation(m_shaderProgram, "cameraMatrix");
-            glUniformMatrix4fv(cameraMatrix, 1, GL_FALSE, glm::value_ptr(cameraMatrix4));
-
-            GLint projectionMatrix = glGetUniformLocation(m_shaderProgram, "projectionMatrix");
-            glUniformMatrix4fv(projectionMatrix, 1, GL_FALSE, glm::value_ptr(projectionMatrix4));
-
-            GLint lightPosition = glGetUniformLocation(m_shaderProgram, "lightPosition");
-            glUniform3fv(lightPosition, 1, glm::value_ptr(lightPosition3));
-
-            GLint cameraPosition = glGetUniformLocation(m_shaderProgram, "cameraPosition");
-            glUniform3fv(cameraPosition, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, -10.0f)));
-
-            GLuint myTextureSampler  = glGetUniformLocation(m_shaderProgram, "colorTexture");
-            glUniform1i(myTextureSampler, 0);
-            GLuint myTextureSampler2  = glGetUniformLocation(m_shaderProgram, "normalTexture");
-            glUniform1i(myTextureSampler2, 1);
-            GLuint myTextureSampler3  = glGetUniformLocation(m_shaderProgram, "parallaxTexture");
-            glUniform1i(myTextureSampler3, 2);
-
-            glBindVertexArray(m_VAO); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
-
-            glEnableVertexAttribArray(1);
-            glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
-            glVertexAttribPointer(
-                        1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-                        2,                                // size : U+V => 2
-                        GL_FLOAT,                         // type
-                        GL_FALSE,                         // normalized?
-                        0,                                // stride
-                        (void*)0                          // array buffer offset
-                        );
-
-            glEnableVertexAttribArray(2);
-            glBindBuffer(GL_ARRAY_BUFFER, normbuffer);
-            glVertexAttribPointer(
-                        2,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-                        3,                                // size : U+V => 2
-                        GL_FLOAT,                         // type
-                        GL_FALSE,                         // normalized?
-                        0,                                // stride
-                        (void*)0                          // array buffer offset
-                        );
-
-            glEnableVertexAttribArray(3);
-            glBindBuffer(GL_ARRAY_BUFFER, tangentsBuffer);
-            glVertexAttribPointer(
-                        3,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-                        3,                                // size
-                        GL_FLOAT,                         // type
-                        GL_FALSE,                         // normalized?
-                        0,                                // stride
-                        (void*)0                          // array buffer offset
-                        );
-
-            glEnableVertexAttribArray(4);
-            glBindBuffer(GL_ARRAY_BUFFER, bitangentsBuffer);
-            glVertexAttribPointer(
-                        4,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-                        3,                                // size
-                        GL_FLOAT,                         // type
-                        GL_FALSE,                         // normalized?
-                        0,                                // stride
-                        (void*)0                          // array buffer offset
-                        );
+        glVertexAttribPointer(
+                    4,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+                    3,                                // size
+                    GL_FLOAT,                         // type
+                    GL_FALSE,                         // normalized?
+                    0,                                // stride
+                    (void*)0                          // array buffer offset
+                    );
 
 
-            glDrawArrays(GL_TRIANGLES, 0, obj.vertexes().size());
+        glViewport(0, 0, windowStruct.width, windowStruct.height);
+        glDrawArrays(GL_TRIANGLES, 0, obj.vertexes().size());
 
-            glfwSwapBuffers(m_window);
+        glfwSwapBuffers(window);
 
+        glfwPollEvents();
 
-            if (glfwGetKey(m_window, GLFW_KEY_LEFT) == GLFW_PRESS) {
-                m_cameraRotation = glm::rotate(m_cameraRotation, -0.01f, glm::vec3(0, 1, 0));
-            } else if (glfwGetKey(m_window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
-                m_cameraRotation = glm::rotate(m_cameraRotation, 0.01f, glm::vec3(0, 1, 0));
-            } else if (glfwGetKey(m_window, GLFW_KEY_UP) == GLFW_PRESS) {
-                m_cameraRotation = glm::rotate(m_cameraRotation, -0.01f, glm::vec3(1, 0, 0));
-            } else if (glfwGetKey(m_window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-                m_cameraRotation = glm::rotate(m_cameraRotation, 0.01f, glm::vec3(1, 0, 0));
-            } else if (glfwGetKey(m_window, GLFW_KEY_W) == GLFW_PRESS) {
-                m_cameraPosition += glm::vec3(m_cameraRotation * glm::vec4(0.0, 0.0, 0.1, 1.0));
-            } else if (glfwGetKey(m_window, GLFW_KEY_S) == GLFW_PRESS) {
-                m_cameraPosition += glm::vec3(m_cameraRotation * glm::vec4(0.0, 0.0, -0.1, 1.0));
-            } else if (glfwGetKey(m_window, GLFW_KEY_A) == GLFW_PRESS) {
-            } else if (glfwGetKey(m_window, GLFW_KEY_D) == GLFW_PRESS) {
-            }
-
-            glfwPollEvents();
-        }
+        // TODO: CLEAN UP!!!!
+        // TODO: move shaders to separate files!!!
     }
     glfwTerminate();
 
