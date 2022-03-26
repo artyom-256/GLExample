@@ -104,7 +104,7 @@ const char* FRAGMENT_SHADER_SOURCE = R"(
     uniform mat4 modelMatrix;
     uniform sampler2D colorTexture;
     uniform sampler2D normalTexture;
-    uniform sampler2D parallaxTexture;
+    uniform sampler2D displacementTexture;
 
     // Shift texture coordinates according to the parallax map.
     // @param texCoords Original texture coordinates.
@@ -128,14 +128,14 @@ const char* FRAGMENT_SHADER_SOURCE = R"(
 
         // Get initial values.
         vec2  currentTexCoords     = texCoords;
-        float currentDepthMapValue = texture(parallaxTexture, currentTexCoords).r;
+        float currentDepthMapValue = texture(displacementTexture, currentTexCoords).r;
         vec2 shift = vec2(0.0, 0.0);
 
         while(currentLayerDepth < currentDepthMapValue) {
             // shift texture coordinates along direction of P
             shift -= deltaTexCoords;
             // get depthmap value at current texture coordinates
-            currentDepthMapValue = texture(parallaxTexture, currentTexCoords + shift).r;
+            currentDepthMapValue = texture(displacementTexture, currentTexCoords + shift).r;
             // get depth of next layer
             currentLayerDepth += layerDepth;
         }
@@ -147,7 +147,7 @@ const char* FRAGMENT_SHADER_SOURCE = R"(
 
         // get depth after and before collision for linear interpolation
         float afterDepth  = currentDepthMapValue - currentLayerDepth;
-        float beforeDepth = texture(parallaxTexture, prevTexCoords).r - currentLayerDepth + layerDepth;
+        float beforeDepth = texture(displacementTexture, prevTexCoords).r - currentLayerDepth + layerDepth;
 
         // interpolation of texture coordinates
         float weight = afterDepth / (afterDepth - beforeDepth);
@@ -303,125 +303,112 @@ int main()
         abort();
     }
 
-    // set up vertex data (and buffer(s)) and configure vertex attributes
-    // ------------------------------------------------------------------
-
+    // Create a vertex array object that is a collection of attribute buffers describing each vertex.
     GLuint vao;
     glGenVertexArrays(1, &vao);
-    // bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
     glBindVertexArray(vao);
 
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    // Create a buffer that contains vertex coordinates.
+    GLuint vertexBuffer;
+    glGenBuffers(1, &vertexBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
     glBufferData(GL_ARRAY_BUFFER, obj.vertexes().size() * sizeof(glm::vec3), obj.vertexes().data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    // You can unbind the VAO afterwards so other VAO calls won't accidentally modify this VAO, but this rarely happens. Modifying other
-    // VAOs requires a call to glBindVertexArray anyways so we generally don't unbind VAOs (nor VBOs) when it's not directly necessary.
-
-    GLuint uvbuffer;
-    glGenBuffers(1, &uvbuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+    // Create a buffer that contains texture coordinates per vertex.
+    GLuint uvBuffer;
+    glGenBuffers(1, &uvBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, uvBuffer);
     glBufferData(GL_ARRAY_BUFFER, obj.uvs().size() * sizeof(glm::vec2), obj.uvs().data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-
-    GLuint normbuffer;
-    glGenBuffers(1, &normbuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, normbuffer);
+    // Create a buffer that contains normals per vertex.
+    GLuint normalBuffer;
+    glGenBuffers(1, &normalBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, normalBuffer);
     glBufferData(GL_ARRAY_BUFFER, obj.normals().size() * sizeof(glm::vec3), obj.normals().data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-
-    GLuint tangentsBuffer;
-    glGenBuffers(1, &tangentsBuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, tangentsBuffer);
+    // Create a buffer that contains tangents per vertex.
+    GLuint tangentBuffer;
+    glGenBuffers(1, &tangentBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, tangentBuffer);
     glBufferData(GL_ARRAY_BUFFER, obj.tangents().size() * sizeof(glm::vec3), &obj.tangents()[0], GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-
-    GLuint bitangentsBuffer;
-    glGenBuffers(1, &bitangentsBuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, bitangentsBuffer);
+    // Create a buffer that contains bitangents per vertex.
+    GLuint bitangentBuffer;
+    glGenBuffers(1, &bitangentBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, bitangentBuffer);
     glBufferData(GL_ARRAY_BUFFER, obj.tangents().size() * sizeof(glm::vec3), &obj.bitangents()[0], GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    glEnableVertexAttribArray(4);
-    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-
-
+    // Unbind vertex attribute array to not accidentaly make changes to it.
     glBindVertexArray(0);
 
-
-    bitmap_image img("texture.bmp");
-
+    // Read an image texure file.
+    bitmap_image imageTexture("texture.bmp");
+    if (imageTexture.data().size() == 0) {
+        std::cout << "Failed to open image texture!" << std::endl;
+        abort();
+    }
+    // Allocate the texture.
     glActiveTexture(GL_TEXTURE0);
-    // Создадим одну текстуру OpenGL
     GLuint textureID;
     glGenTextures(1, &textureID);
-    // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
     glBindTexture(GL_TEXTURE_2D, textureID);
-    // Передадим изображение OpenGL
-    glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img.width(), img.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &img.data()[0]);
-    int g_nMaxAnisotropy;
-    glGetIntegerv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,&g_nMaxAnisotropy);
-
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_ANISOTROPY_EXT,
-                        g_nMaxAnisotropy-0.1);
-    // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
+    // Write image data to the texture.
+    glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, imageTexture.width(), imageTexture.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &imageTexture.data()[0]);
+    // Set texture scaling parameters.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    // Когда изображение уменьшается, то мы используем линейной смешивание 2х мипмапов, к которым также применяется линейная фильтрация
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    // И генерируем мипмап
+    // Generate a mipmap for scaling.
     glGenerateMipmap(GL_TEXTURE_2D);;
 
-    bitmap_image img2("normal.bmp");
-
+    // Read a normal texure file.
+    bitmap_image normalTexture("normal.bmp");
+    if (normalTexture.data().size() == 0) {
+        std::cout << "Failed to open normal texture!" << std::endl;
+        abort();
+    }
+    // Allocate the texture.
     glActiveTexture(GL_TEXTURE1);
-    // Создадим одну текстуру OpenGL
     GLuint textureNormID;
     glGenTextures(1, &textureNormID);
-    // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
     glBindTexture(GL_TEXTURE_2D, textureNormID);
-    // Передадим изображение OpenGL
-    glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img2.width(), img2.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &img2.data()[0]);
-    // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        // ... which requires mipmaps. Generate them automatically.
-        glGenerateMipmap(GL_TEXTURE_2D);
-
-
-        bitmap_image img3("displacement.bmp");
-
-    glActiveTexture(GL_TEXTURE2);
-    GLuint textureDSPID;
-    // Создадим одну текстуру OpenGL
-    glGenTextures(1, &textureDSPID);
-    // Сделаем созданную текстуру текущий, таким образом все следующие функции будут работать именно с этой текстурой
-    glBindTexture(GL_TEXTURE_2D, textureDSPID);
-    // Передадим изображение OpenGL
-    glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, img3.width(), img3.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &img3.data()[0]);
-    // Когда изображение увеличивается, то мы используем обычную линейную фильтрацию
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    // Write image data to the texture.
+    glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, normalTexture.width(), normalTexture.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &normalTexture.data()[0]);
+    // Set texture scaling parameters.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    // ... which requires mipmaps. Generate them automatically.
+    // Generate a mipmap for scaling.
     glGenerateMipmap(GL_TEXTURE_2D);
 
+    // Read a displacement texure file.
+    bitmap_image displacementTexture("displacement.bmp");
+    if (displacementTexture.data().size() == 0) {
+        std::cout << "Failed to open displacement texture!" << std::endl;
+        abort();
+    }
+    // Allocate the texture.
+    glActiveTexture(GL_TEXTURE2);
+    GLuint textureDSPID;
+    glGenTextures(1, &textureDSPID);
+    glBindTexture(GL_TEXTURE_2D, textureDSPID);
+    // Write image data to the texture.
+    glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, displacementTexture.width(), displacementTexture.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &displacementTexture.data()[0]);
+    // Set texture scaling parameters.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    // Generate a mipmap for scaling.
+    glGenerateMipmap(GL_TEXTURE_2D);
 
-
+    // Enable depth test and removing of back-facing triangles.
     glEnable(GL_DEPTH_TEST);
-    // Accept fragment if it closer to the camera than the former one
     glDepthFunc(GL_LESS);
-
     glEnable(GL_CULL_FACE);
 
+    // Render loop.
     while (!glfwWindowShouldClose(window))
     {
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -478,13 +465,13 @@ int main()
         glUniform1i(myTextureSampler, 0);
         GLuint myTextureSampler2  = glGetUniformLocation(shaderProgram, "normalTexture");
         glUniform1i(myTextureSampler2, 1);
-        GLuint myTextureSampler3  = glGetUniformLocation(shaderProgram, "parallaxTexture");
+        GLuint myTextureSampler3  = glGetUniformLocation(shaderProgram, "displacementTexture");
         glUniform1i(myTextureSampler3, 2);
 
         glBindVertexArray(vao); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
 
         glEnableVertexAttribArray(0);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
         glVertexAttribPointer(
                     0,                                // attribute. No particular reason for 1, but must match the layout in the shader.
                     3,                                // size : U+V => 2
@@ -496,7 +483,7 @@ int main()
 
 
         glEnableVertexAttribArray(1);
-        glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, uvBuffer);
         glVertexAttribPointer(
                     1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
                     2,                                // size : U+V => 2
@@ -507,7 +494,7 @@ int main()
                     );
 
         glEnableVertexAttribArray(2);
-        glBindBuffer(GL_ARRAY_BUFFER, normbuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, normalBuffer);
         glVertexAttribPointer(
                     2,                                // attribute. No particular reason for 1, but must match the layout in the shader.
                     3,                                // size : U+V => 2
@@ -518,7 +505,7 @@ int main()
                     );
 
         glEnableVertexAttribArray(3);
-        glBindBuffer(GL_ARRAY_BUFFER, tangentsBuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, tangentBuffer);
         glVertexAttribPointer(
                     3,                                // attribute. No particular reason for 1, but must match the layout in the shader.
                     3,                                // size
@@ -529,7 +516,7 @@ int main()
                     );
 
         glEnableVertexAttribArray(4);
-        glBindBuffer(GL_ARRAY_BUFFER, bitangentsBuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, bitangentBuffer);
         glVertexAttribPointer(
                     4,                                // attribute. No particular reason for 1, but must match the layout in the shader.
                     3,                                // size
