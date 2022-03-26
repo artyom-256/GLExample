@@ -12,7 +12,8 @@ LIBS+=$(STD_LIB)\libgdi32.a
 LIBS+=$(GLEW_LIB)\libglew32.a
 LIBS+=$(STD_LIB)\libopengl32.a
 
-SOURCES += main.cpp \
+SOURCES += \
+    main.cpp \
     bitmap_image.cpp \
     object.cpp
 
