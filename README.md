@@ -2,6 +2,8 @@
 
 This is a simple example of an OpenGL application. The code is written to demonstrate an exact sequence of actions you have to perform in order to run a 3D application using OpenGL, so no homemade frameworks, just a single main function. Some code duplication was intentionally left to make the sequence simple. Code not directly related to OpenGL is moved to helper classes.
 
+The code is based on https://www.opengl-tutorial.org/
+
 ![Screenshot image](example.jpg)
 
 Tools:
