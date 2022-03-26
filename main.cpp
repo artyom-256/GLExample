@@ -277,7 +277,7 @@ int main()
     }
 
     // Link shaders into a shader program.
-    auto shaderProgram = glCreateProgram();
+    GLuint shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
 
@@ -354,9 +354,9 @@ int main()
     }
     // Allocate the texture.
     glActiveTexture(GL_TEXTURE0);
-    GLuint textureID;
-    glGenTextures(1, &textureID);
-    glBindTexture(GL_TEXTURE_2D, textureID);
+    GLuint colorTextureId;
+    glGenTextures(1, &colorTextureId);
+    glBindTexture(GL_TEXTURE_2D, colorTextureId);
     // Write image data to the texture.
     glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, imageTexture.width(), imageTexture.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &imageTexture.data()[0]);
     // Set texture scaling parameters.
@@ -373,9 +373,9 @@ int main()
     }
     // Allocate the texture.
     glActiveTexture(GL_TEXTURE1);
-    GLuint textureNormID;
-    glGenTextures(1, &textureNormID);
-    glBindTexture(GL_TEXTURE_2D, textureNormID);
+    GLuint normalTextureId;
+    glGenTextures(1, &normalTextureId);
+    glBindTexture(GL_TEXTURE_2D, normalTextureId);
     // Write image data to the texture.
     glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, normalTexture.width(), normalTexture.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &normalTexture.data()[0]);
     // Set texture scaling parameters.
@@ -392,9 +392,9 @@ int main()
     }
     // Allocate the texture.
     glActiveTexture(GL_TEXTURE2);
-    GLuint textureDSPID;
-    glGenTextures(1, &textureDSPID);
-    glBindTexture(GL_TEXTURE_2D, textureDSPID);
+    GLuint displacementTextureId;
+    glGenTextures(1, &displacementTextureId);
+    glBindTexture(GL_TEXTURE_2D, displacementTextureId);
     // Write image data to the texture.
     glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, displacementTexture.width(), displacementTexture.height(), 0, GL_BGR, GL_UNSIGNED_BYTE, &displacementTexture.data()[0]);
     // Set texture scaling parameters.
@@ -408,135 +408,113 @@ int main()
     glDepthFunc(GL_LESS);
     glEnable(GL_CULL_FACE);
 
+    // Create a camera matrix.
+    glm::vec3 cameraPosition(0, 0, -7.0);
+    glm::mat4 cameraMatrix = glm::lookAt(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), glm::vec3(0, 1, 0));
+    cameraMatrix = glm::translate(cameraMatrix, -cameraPosition);
+
+    // Define light source.
+    glm::vec3 lightPosition(0, 0, -10.0);
+
     // Render loop.
     while (!glfwWindowShouldClose(window))
     {
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        // Clean up color and depth buffers.
+        glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // draw our first triangle
+        // Select the shader program.
         glUseProgram(shaderProgram);
 
-        glm::mat4 cameraMatrix4 = glm::lookAt(
-            glm::vec3(0, 0, 0), // Позиция камеры в мировом пространстве
-            glm::vec3(0, 0, 1),   // Указывает куда вы смотрите в мировом пространстве
-            glm::vec3(0, 1, 0)        // Вектор, указывающий направление вверх. Обычно (0, 1, 0)
-        );
+        // Create a model matrix that combines rotations around x and y axis with different speed.
+        float time = float(glfwGetTime()) / 2;
+        glm::mat4 modelMatrix = glm::mat4(1.0f);
+        modelMatrix *= glm::rotate(glm::mat4(1.0f), time, glm::vec3(0, 1, 0));
+        modelMatrix *= glm::rotate(glm::mat4(1.0f), time / 2, glm::vec3(1, 0, 0));
 
-        glm::vec3 cameraPosition(0, 0, -7.0);
-        glm::mat4 m_cameraRotation(1);
+        // Create a projection matrix.
+        float aspectRatio = float(windowStruct.width) / windowStruct.height;
+        glm::mat4 projectionMatrix = glm::perspective(glm::radians(30.0f), aspectRatio, 0.1f, 100.0f);
 
-        cameraMatrix4 = m_cameraRotation * cameraMatrix4;
-        cameraMatrix4 = glm::translate(cameraMatrix4, -cameraPosition);
+        // Add uniform values for matrices and positions.
+        GLint modelMatrixUniform = glGetUniformLocation(shaderProgram, "modelMatrix");
+        glUniformMatrix4fv(modelMatrixUniform, 1, GL_FALSE, glm::value_ptr(modelMatrix));
+        GLint cameraMatrixUniform = glGetUniformLocation(shaderProgram, "cameraMatrix");
+        glUniformMatrix4fv(cameraMatrixUniform, 1, GL_FALSE, glm::value_ptr(cameraMatrix));
+        GLint projectionMatrixUniform = glGetUniformLocation(shaderProgram, "projectionMatrix");
+        glUniformMatrix4fv(projectionMatrixUniform, 1, GL_FALSE, glm::value_ptr(projectionMatrix));
+        GLint lightPositionUniform = glGetUniformLocation(shaderProgram, "lightPosition");
+        glUniform3fv(lightPositionUniform, 1, glm::value_ptr(lightPosition));
+        GLint cameraPositionUniform = glGetUniformLocation(shaderProgram, "cameraPosition");
+        glUniform3fv(cameraPositionUniform, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, -10.0f)));
 
-        glm::mat4 modelMatrix4 = glm::rotate(glm::mat4(1.0f), float(glfwGetTime()) / 2, glm::vec3(0, 1, 0));
-        modelMatrix4 *= glm::rotate(glm::mat4(1.0f), float(glfwGetTime()) / 4, glm::vec3(1, 0, 0));
+        // Add uniform values for textures.
+        GLuint colorTextureUniform  = glGetUniformLocation(shaderProgram, "colorTexture");
+        glUniform1i(colorTextureUniform, 0);
+        GLuint normalTextureUniform  = glGetUniformLocation(shaderProgram, "normalTexture");
+        glUniform1i(normalTextureUniform, 1);
+        GLuint displacementTextureUniform  = glGetUniformLocation(shaderProgram, "displacementTexture");
+        glUniform1i(displacementTextureUniform, 2);
 
-        glm::mat4 projectionMatrix4 = glm::perspective(
-            glm::radians(30.0f), // Вертикальное поле зрения в радианах. Обычно между 90&deg; (очень широкое) и 30&deg; (узкое)
-            float(windowStruct.width) / windowStruct.height,       // Отношение сторон. Зависит от размеров вашего окна. Заметьте, что 4/3 == 800/600 == 1280/960
-            0.1f,              // Ближняя плоскость отсечения. Должна быть больше 0.
-            100.0f             // Дальняя плоскость отсечения.
-        );
+        // Bind the vertex array object we are going to draw and define how buffer values are split per vertices.
+        glBindVertexArray(vao);
 
-        glm::vec3 lightPosition3(0.0, 0.0, -10.0);
-
-        lightPosition3 = cameraPosition;
-
-        GLint modelMatrix = glGetUniformLocation(shaderProgram, "modelMatrix");
-        glUniformMatrix4fv(modelMatrix, 1, GL_FALSE, glm::value_ptr(modelMatrix4));
-
-        GLint cameraMatrix = glGetUniformLocation(shaderProgram, "cameraMatrix");
-        glUniformMatrix4fv(cameraMatrix, 1, GL_FALSE, glm::value_ptr(cameraMatrix4));
-
-        GLint projectionMatrix = glGetUniformLocation(shaderProgram, "projectionMatrix");
-        glUniformMatrix4fv(projectionMatrix, 1, GL_FALSE, glm::value_ptr(projectionMatrix4));
-
-        GLint lightPosition = glGetUniformLocation(shaderProgram, "lightPosition");
-        glUniform3fv(lightPosition, 1, glm::value_ptr(lightPosition3));
-
-        GLint cameraPositionLocation = glGetUniformLocation(shaderProgram, "cameraPosition");
-        glUniform3fv(cameraPositionLocation, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, -10.0f)));
-
-        GLuint myTextureSampler  = glGetUniformLocation(shaderProgram, "colorTexture");
-        glUniform1i(myTextureSampler, 0);
-        GLuint myTextureSampler2  = glGetUniformLocation(shaderProgram, "normalTexture");
-        glUniform1i(myTextureSampler2, 1);
-        GLuint myTextureSampler3  = glGetUniformLocation(shaderProgram, "displacementTexture");
-        glUniform1i(myTextureSampler3, 2);
-
-        glBindVertexArray(vao); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
-
+        // Describe vertex coordinates buffer.
         glEnableVertexAttribArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-        glVertexAttribPointer(
-                    0,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-                    3,                                // size : U+V => 2
-                    GL_FLOAT,                         // type
-                    GL_FALSE,                         // normalized?
-                    0,                                // stride
-                    (void*)0                          // array buffer offset
-                    );
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
-
+        // Describe texture coordinates buffer.
         glEnableVertexAttribArray(1);
         glBindBuffer(GL_ARRAY_BUFFER, uvBuffer);
-        glVertexAttribPointer(
-                    1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-                    2,                                // size : U+V => 2
-                    GL_FLOAT,                         // type
-                    GL_FALSE,                         // normalized?
-                    0,                                // stride
-                    (void*)0                          // array buffer offset
-                    );
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
+        // Describe normal buffer.
         glEnableVertexAttribArray(2);
         glBindBuffer(GL_ARRAY_BUFFER, normalBuffer);
-        glVertexAttribPointer(
-                    2,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-                    3,                                // size : U+V => 2
-                    GL_FLOAT,                         // type
-                    GL_FALSE,                         // normalized?
-                    0,                                // stride
-                    (void*)0                          // array buffer offset
-                    );
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
+        // Describe tangent buffer.
         glEnableVertexAttribArray(3);
         glBindBuffer(GL_ARRAY_BUFFER, tangentBuffer);
-        glVertexAttribPointer(
-                    3,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-                    3,                                // size
-                    GL_FLOAT,                         // type
-                    GL_FALSE,                         // normalized?
-                    0,                                // stride
-                    (void*)0                          // array buffer offset
-                    );
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
+        // Describe bitangent buffer.
         glEnableVertexAttribArray(4);
         glBindBuffer(GL_ARRAY_BUFFER, bitangentBuffer);
-        glVertexAttribPointer(
-                    4,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-                    3,                                // size
-                    GL_FLOAT,                         // type
-                    GL_FALSE,                         // normalized?
-                    0,                                // stride
-                    (void*)0                          // array buffer offset
-                    );
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
-
+        // Set up viewport.
         glViewport(0, 0, windowStruct.width, windowStruct.height);
+
+        // Draw the vertex attribute buffer.
         glDrawArrays(GL_TRIANGLES, 0, obj.vertexes().size());
 
+        // Swap buffers.
         glfwSwapBuffers(window);
 
+        // Poll system events.
         glfwPollEvents();
-
-        // TODO: CLEAN UP!!!!
-        // TODO: move shaders to separate files!!!
     }
+
+    // Delete textures.
+    GLuint textures[] = {colorTextureId, normalTextureId, displacementTextureId};
+    glDeleteTextures(sizeof(textures) / sizeof(textures[0]), textures);
+
+    // Delete vetrex buffers.
+    GLuint buffers[] = { vertexBuffer, uvBuffer, normalBuffer, tangentBuffer, bitangentBuffer };
+    glDeleteBuffers(sizeof(buffers) / sizeof(buffers[0]), buffers);
+
+    // Delete vertex attribute array.
+    glDeleteVertexArrays(1, &vao);
+
+    // Delete shader program.
+    glDeleteProgram(shaderProgram);
+
+    // Destroy the window.
+    glfwDestroyWindow(window);
+
+    // Clean up GLFW.
     glfwTerminate();
 
     return 0;
