@@ -8,24 +8,25 @@ The code is based on https://www.opengl-tutorial.org/
 
 Tools:
 
-* MinGW version 7.3.0
+* QtCreator v5.12.2
+* MinGW v7.3.0
 * GLEW v2.1.0
-* GLFW v3.2.1
-* GLM v0.9.9.0
+* GLFW v3.3.2
+* GLM v0.9.9.8
 
 Build and Run:
 
 * Open project in QtCreator
 * Go to Project->Build and set up environement variables (change paths according to your environment):
   * GLEW_INC=C:\Lib\glew-2.1.0\include
-  * GLEW_LIB=C:\Lib\glew-2.1.0\build\cmake\build\lib
-  * GLFW_INC=C:\Lib\glfw-3.2.1\include
-  * GLFW_LIB=C:\Lib\glfw-3.2.1\build\src
-  * GLM_INC=C:\Lib\glm-0.9.9.0
+  * GLEW_LIB=C:\Lib\glew-2.1.0\lib
+  * GLFW_INC=C:\Lib\glfw-3.3.2\include
+  * GLFW_LIB=C:\Lib\glfw-3.3.2\lib
+  * GLM_INC=C:\Lib\glm-0.9.9.8\include
   * STD_LIB=C:\Lib\Qt_5.12.2\Tools\mingw730_32\i686-w64-mingw32\lib
 * Go to Project->Run and set up work catalog to GLExample
 * Build and Run
 
 Run from command line:
 * Change current catalog to GLExample
-* Run gla.exe
+* Run GLExample.exe
