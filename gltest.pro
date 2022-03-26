@@ -19,3 +19,7 @@ SOURCES += main.cpp \
 HEADERS += \
     bitmap_image.h \
     object.h
+
+DISTFILES += \
+    main.fs \
+    main.vs
